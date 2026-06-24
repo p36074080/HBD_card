@@ -267,9 +267,33 @@ function renderAdminHome(el) {
       </div>
 
       <button class="btn btn-ghost" onclick="window.location.href='index.html#app'">切換到持卡人 App</button>
+      <button class="btn btn-ghost" style="color:var(--danger);" onclick="confirmReset()">${icon('restart_alt')} 重置測試狀態（恢復未開卡）</button>
     </div>
   `;
 }
+
+// ── 重置 / 初始化（測試用）──
+window.confirmReset = function() {
+  showModal(`
+    <div class="modal-title">重置測試狀態</div>
+    <div class="modal-desc">
+      將卡片恢復為<strong>未開卡</strong>、所有刷卡金與票券<strong>補滿</strong>、並<strong>清空交易紀錄</strong>。<br/>
+      用於測試完整流程，此動作無法復原。
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="doReset()">確認重置</button>
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    </div>
+  `);
+};
+
+window.doReset = async function() {
+  closeModal();
+  const st = await apiCall({ action: 'reset' });
+  if (!applyServerState(st)) { showToast((st && st.error) || '重置失敗，請檢查連線', 'error'); return; }
+  showToast('已重置為未開卡狀態', 'success');
+  handleRoute();
+};
 
 window.openCashback = function(mode) {
   cashbackMode = mode;

@@ -157,8 +157,19 @@ function handleRoute() {
 window.addEventListener('hashchange', handleRoute);
 window.addEventListener('DOMContentLoaded', () => {
   loadCache();
-  handleRoute();            // 先用快取即時顯示
-  refreshFromServer(true);  // 開啟時向 Google Sheet 同步一次（內容有變才重繪）
+  // NFC 感應進來會帶 ?card=...，記住卡號並走感應入口
+  const cardParam = new URLSearchParams(location.search).get('card');
+  if (cardParam) { try { localStorage.setItem('gfc_card_token', cardParam); } catch (e) {} }
+  const goTap = !location.hash && !!cardParam;
+
+  if (!location.hash) {
+    // 設定 hash 會觸發 hashchange → handleRoute
+    location.hash = goTap ? 'tap' : (appState.isActivated ? 'app' : 'welcome');
+  } else {
+    handleRoute();
+  }
+  if (!goTap) refreshFromServer(true);  // 走 tap 時由 renderTap 自己抓
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
@@ -328,9 +339,13 @@ function renderTap(el) {
       </div>
     </div>
   `;
-  setTimeout(() => {
+  // 感應進來：抓最新 server 狀態 → 已開卡進首頁，未開卡進開卡頁
+  (async () => {
+    const minWait = new Promise(r => setTimeout(r, 1500));
+    await refreshFromServer(false);
+    await minWait;
     navigate(appState.isActivated ? 'app' : 'activate');
-  }, 1800);
+  })();
 }
 
 // ── Page: Activate ────────────────────────

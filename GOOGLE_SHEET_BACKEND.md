@@ -162,6 +162,7 @@ function handleAction_(b) {
     case 'setBenefit':      return doSetBenefit_(b);
     case 'restoreBenefit':  return doRestoreBenefit_(b);
     case 'activate':        return doActivate_(b);
+    case 'reset':           return doReset_(b);
     default:                return { ok: false, error: 'unknown action: ' + b.action };
   }
 }
@@ -253,6 +254,24 @@ function doActivate_(b) {
   if (b.holderName) sh.getRange(2, 1).setValue(b.holderName);
   sh.getRange(2, 2).setValue('active');
   sh.getRange(2, 3).setValue(new Date());
+  return getState_();
+}
+
+/* 重置 / 初始化（測試用）：卡片回未開卡、權益補滿、清空交易 */
+function doReset_(b) {
+  const card = ss_().getSheetByName('Card');
+  card.getRange(2, 2).setValue('inactive');   // status
+  card.getRange(2, 3).setValue('');           // activatedAt
+
+  const ben = ss_().getSheetByName('Benefits');
+  const rows = ben.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0]) ben.getRange(i + 1, 5).setValue(rows[i][3]);  // remaining = total
+  }
+
+  const tx = ss_().getSheetByName('Transactions');
+  if (tx.getLastRow() > 1) tx.deleteRows(2, tx.getLastRow() - 1); // 保留標題列
+
   return getState_();
 }
 
