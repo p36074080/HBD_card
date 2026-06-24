@@ -424,8 +424,6 @@ window.adminRestoreBenefit = async function(key, id) {
 let cashbackMode = 'store';                 // 'store' | 'charge'
 let cashbackPool = 'cb_medical';            // selected pool id
 let cashbackAmount = '';                    // current input value
-let pendingCharge = null;                   // {poolId, amount, note}
-let chargeTimer = null;
 
 function renderAdminCashback(el) {
   const pools = adminState.benefits.cashback.items;
@@ -512,23 +510,22 @@ window.doCashback = async function() {
     navigate('success');
   } else {
     if (amount > pool.remaining) { showToast(`超過剩餘額度（NT$ ${pool.remaining.toLocaleString()}）`, 'error'); return; }
-    pendingCharge = { poolId: pool.id, amount, note };
-    showChargeTap();
+    showChargeTap(pool, amount, note);
   }
 };
 
-// 扣款需感應：顯示「請她感應卡片」示意（含倒數與感應完成）
-function showChargeTap() {
-  const pool = findBenefit('cashback', pendingCharge.poolId);
-  const amount = pendingCharge.amount;
+// 扣款需感應：把 pending 寫到 server → 顯示「請她感應你的手機」
+// 她在你手機上感應 → 瀏覽器開啟 index 的 ?card= 入口 → 讀到 pending 執行扣款並顯示完成。
+// 同畫面保留「我已完成感應」按鈕作為備援（呼叫 commitPending）。
+let chargeBusy = false;
+
+async function showChargeTap(pool, amount, note) {
   const container = document.getElementById('page-container');
   document.getElementById('bottom-nav').classList.add('hidden');
   const div = document.createElement('div');
   div.className = 'page';
   container.innerHTML = '';
   container.appendChild(div);
-
-  let secs = 60;
   div.innerHTML = `
     <div class="tap-screen">
       ${renderNfcAnim('contactless')}
@@ -551,57 +548,37 @@ function showChargeTap() {
           <span class="tap-detail-value gold-text">NT$ ${(pool.remaining - amount).toLocaleString()}</span>
         </div>
       </div>
-      <div class="tap-countdown" id="tap-countdown">${secs} 秒後自動完成</div>
+      <div class="tap-hint">感應後開啟的頁面會自動完成扣款</div>
       <div class="tap-actions">
-        <button class="btn btn-danger" onclick="finishCharge()">${icon('check_circle')} 感應完成，執行扣款</button>
+        <button class="btn btn-danger" onclick="finishCharge()">${icon('check_circle')} 我已完成感應</button>
         <button class="btn btn-ghost" onclick="cancelCharge()">取消</button>
       </div>
     </div>
   `;
-
-  clearInterval(chargeTimer);
-  chargeTimer = setInterval(() => {
-    if (!document.body.contains(div)) { clearInterval(chargeTimer); return; }
-    secs -= 1;
-    if (secs <= 0) { clearInterval(chargeTimer); finishCharge(); return; }
-    const cd = document.getElementById('tap-countdown');
-    if (cd) cd.textContent = `${secs} 秒後自動完成`;
-  }, 1000);
+  const st = await apiCall({ action: 'setPending', pAction: 'charge', id: pool.id, amount, note });
+  if (!st || !st.ok) showToast('連線失敗，請稍後再試', 'error');
 }
 
-window.cancelCharge = function() {
-  clearInterval(chargeTimer);
-  pendingCharge = null;
-  handleRoute();   // hash 已是 admin-cashback，直接重繪回該頁
+window.cancelCharge = async function() {
+  await apiCall({ action: 'clearPending' });
+  handleRoute();   // hash 已是 admin-cashback，重繪回該頁
 };
 
-let chargeBusy = false;
-
 window.finishCharge = async function() {
-  clearInterval(chargeTimer);
-  if (!pendingCharge || chargeBusy) return;
-  const pool = findBenefit('cashback', pendingCharge.poolId);
-  const { poolId, amount, note } = pendingCharge;
-  if (!pool) { pendingCharge = null; navigate('admin'); return; }
-  if (amount > pool.remaining) { pendingCharge = null; showToast('餘額不足', 'error'); navigate('admin-cashback'); return; }
-
+  if (chargeBusy) return;
   chargeBusy = true;
-  const cd = document.getElementById('tap-countdown');
-  if (cd) cd.textContent = '扣款中…';
-  const st = await apiCall({ action: 'charge', id: poolId, amount, note });
+  const st = await apiCall({ action: 'commitPending' });
   chargeBusy = false;
-
-  if (!applyServerState(st)) {
-    showToast((st && st.error) || '扣款失敗，請檢查連線', 'error');
-    pendingCharge = null;
-    navigate('admin-cashback');
-    return;
+  applyServerState(st);
+  if (st && st.committed && st.committed.action === 'charge') {
+    const c = st.committed;
+    adminState.lastAction = { type: 'charge', amount: c.amount, poolTitle: c.title, remaining: c.remaining };
+    cashbackAmount = '';
+    navigate('success');
+  } else {
+    showToast('尚未感應或交易已完成', 'info');
+    handleRoute();
   }
-  const updated = findBenefit('cashback', poolId);
-  adminState.lastAction = { type: 'charge', amount, poolTitle: pool.title, remaining: updated ? updated.remaining : 0 };
-  pendingCharge = null;
-  cashbackAmount = '';
-  navigate('success');
 };
 
 // ── Page: Admin Transactions ──────────────

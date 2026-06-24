@@ -72,8 +72,17 @@ function applyServerState(st) {
   }
   if (st.transactions) appState.transactions = st.transactions;
   appState.benefits = mergeBenefitsFromServer(st.benefits);
+  appState.pending = st.pending || null;   // 待感應完成的動作
   saveCache();
   return true;
+}
+
+// 把 server 回傳的 committed 轉成 success 頁要顯示的內容
+function committedToAction(c) {
+  if (!c) return null;
+  if (c.action === 'redeem') return { type: 'benefit', title: c.title, detail: `剩餘 ${c.remaining} ${c.unit || '次'}` };
+  if (c.action === 'charge') return { type: 'chargeDone', title: c.title, amount: c.amount, remaining: c.remaining };
+  return null;
 }
 
 function stateSig() {
@@ -339,10 +348,21 @@ function renderTap(el) {
       </div>
     </div>
   `;
-  // 感應進來：抓最新 server 狀態 → 已開卡進首頁，未開卡進開卡頁
+  // 感應進來：抓最新 server 狀態
   (async () => {
-    const minWait = new Promise(r => setTimeout(r, 1500));
+    const minWait = new Promise(r => setTimeout(r, 1400));
     await refreshFromServer(false);
+    // 若 server 有待處理動作（兌換/扣款）→ 感應即執行並顯示完成
+    if (appState.pending) {
+      const st = await apiCall({ action: 'commitPending' });
+      applyServerState(st);
+      await minWait;
+      if (st && st.committed) {
+        appState.lastAction = committedToAction(st.committed);
+        navigate('success');
+        return;
+      }
+    }
     await minWait;
     navigate(appState.isActivated ? 'app' : 'activate');
   })();
@@ -620,13 +640,13 @@ function findBenefit(key, id) {
   return cat ? cat.items.find(i => i.id === id) : null;
 }
 
-// 兌換流程：點兌換 → App 內顯示「請感應卡片」示意（含倒數與「感應完成」按鈕）
-// → 完成後遞減次數、寫入兌換紀錄、顯示完成頁。
-// (NFC 真實感應會用預設瀏覽器開啟 tap.html；PWA 這端靠倒數/按鈕回到紀錄)
+// 兌換流程：點兌換 → 輸入支付密碼 → 把 pending 寫到 server → 顯示「請感應卡片」
+// → 感應後瀏覽器開啟 ?card= 入口，讀到 server 的 pending 即執行兌換並顯示完成。
+//   同畫面保留「我已完成感應」按鈕作為備援（同樣呼叫 commitPending）。
 
-let redeemTimer = null;
 const PIN_CODE = '0823';        // 支付密碼（生日）
 let pinTarget = null;
+let redeemBusy = false;
 
 window.confirmUseBenefit = function(key, id) {
   const item = findBenefit(key, id);
@@ -684,7 +704,7 @@ window.cancelPin = function() {
   handleRoute();   // hash 已是 products，直接重繪回兌換頁
 };
 
-function showRedeemTap(key, id) {
+async function showRedeemTap(key, id) {
   const item = findBenefit(key, id);
   if (!item) return;
   const unit = item.unit || '次';
@@ -695,78 +715,54 @@ function showRedeemTap(key, id) {
   div.className = 'page';
   container.innerHTML = '';
   container.appendChild(div);
-
-  let secs = 60;
-  const paint = () => {
-    div.innerHTML = `
-      <div class="tap-screen">
-        ${renderNfcAnim('contactless')}
-        <div>
-          <div class="eyebrow" style="font-size:10px;letter-spacing:0.2em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:10px;">NFC Redeem</div>
-          <div class="tap-title">請感應<br/>Girlfriend Black Card</div>
-          <div class="tap-sub" style="margin-top:10px;">將卡片靠近 iPhone 頂部完成兌換</div>
+  div.innerHTML = `
+    <div class="tap-screen">
+      ${renderNfcAnim('contactless')}
+      <div>
+        <div class="eyebrow" style="font-size:10px;letter-spacing:0.2em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:10px;">NFC Redeem</div>
+        <div class="tap-title">請感應<br/>Girlfriend Black Card</div>
+        <div class="tap-sub" style="margin-top:10px;">將卡片靠近 iPhone 頂部完成兌換</div>
+      </div>
+      <div class="tap-detail-box">
+        <div class="tap-detail-row">
+          <span class="tap-detail-label">兌換項目</span>
+          <span class="tap-detail-value">${item.title}</span>
         </div>
-        <div class="tap-detail-box">
-          <div class="tap-detail-row">
-            <span class="tap-detail-label">兌換項目</span>
-            <span class="tap-detail-value">${item.title}</span>
-          </div>
-          <div class="tap-detail-row">
-            <span class="tap-detail-label">兌換後剩餘</span>
-            <span class="tap-detail-value gold-text">${item.remaining - 1} ${unit}</span>
-          </div>
-        </div>
-        <div class="tap-hint">感應後手機瀏覽器會開啟兌換頁，<br/>完成後請點「兌換完成」或等待倒數結束。</div>
-        <div class="tap-countdown" id="tap-countdown">${secs} 秒後自動完成</div>
-        <div class="tap-actions">
-          <button class="btn btn-primary" onclick="finishRedeem('${key}','${id}')">${icon('check_circle')} 兌換完成</button>
-          <button class="btn btn-ghost" onclick="cancelRedeem()">取消</button>
+        <div class="tap-detail-row">
+          <span class="tap-detail-label">兌換後剩餘</span>
+          <span class="tap-detail-value gold-text">${item.remaining - 1} ${unit}</span>
         </div>
       </div>
-    `;
-  };
-  paint();
-
-  clearInterval(redeemTimer);
-  redeemTimer = setInterval(() => {
-    if (!document.body.contains(div)) { clearInterval(redeemTimer); return; }
-    secs -= 1;
-    if (secs <= 0) { clearInterval(redeemTimer); finishRedeem(key, id); return; }
-    const cd = document.getElementById('tap-countdown');
-    if (cd) cd.textContent = `${secs} 秒後自動完成`;
-  }, 1000);
+      <div class="tap-hint">感應卡片後，開啟的頁面會自動完成兌換</div>
+      <div class="tap-actions">
+        <button class="btn btn-primary" onclick="finishRedeem()">${icon('check_circle')} 我已完成感應</button>
+        <button class="btn btn-ghost" onclick="cancelRedeem()">取消</button>
+      </div>
+    </div>
+  `;
+  // 把待處理動作寫到 server，供感應後開啟的新分頁讀取並執行
+  const st = await apiCall({ action: 'setPending', pAction: 'redeem', id, title: item.title, unit });
+  if (!st || !st.ok) showToast('連線失敗，請稍後再試', 'error');
 }
 
-window.cancelRedeem = function() {
-  clearInterval(redeemTimer);
-  handleRoute();   // hash 已是 products，直接重繪回兌換頁
+window.cancelRedeem = async function() {
+  await apiCall({ action: 'clearPending' });
+  handleRoute();   // hash 已是 products，重繪回兌換頁
 };
 
-let redeemBusy = false;
-
-window.finishRedeem = async function(key, id) {
-  clearInterval(redeemTimer);
+window.finishRedeem = async function() {
   if (redeemBusy) return;
-  const item = findBenefit(key, id);
-  if (!item) { navigate('products'); return; }
-  if (item.remaining <= 0) { showToast('此項目已兌換完', 'error'); navigate('products'); return; }
-  const unit = item.unit || '次';
-
   redeemBusy = true;
-  const cd = document.getElementById('tap-countdown');
-  if (cd) cd.textContent = '核銷中…';
-  const st = await apiCall({ action: 'redeem', id, title: item.title, unit });
+  const st = await apiCall({ action: 'commitPending' });
   redeemBusy = false;
-
-  if (!applyServerState(st)) {
-    showToast((st && st.error) ? st.error : '連線失敗，請稍後再試', 'error');
-    navigate('products');
-    return;
+  applyServerState(st);
+  if (st && st.committed) {
+    appState.lastAction = committedToAction(st.committed);
+    navigate('success');
+  } else {
+    showToast('尚未感應或交易已完成', 'info');
+    handleRoute();
   }
-  const updated = findBenefit(key, id);
-  const remaining = updated ? updated.remaining : item.remaining - 1;
-  appState.lastAction = { type: 'benefit', title: item.title, detail: `剩餘 ${remaining} ${unit}` };
-  navigate('success');
 };
 
 // ── Page: Daily Benefit ───────────────────
@@ -851,6 +847,15 @@ function renderSuccess(el) {
     buttons = `
       <button class="btn btn-primary" onclick="navigate('transactions')">查看交易紀錄</button>
       <button class="btn btn-secondary" onclick="navigate('products')">回到兌換中心</button>
+    `;
+  } else if (a.type === 'chargeDone') {
+    iconName = 'payments'; iconClass = 'gold-icon';
+    title = '扣款完成';
+    desc = `已從「${a.title}」扣除<br/><strong>NT$ ${Number(a.amount).toLocaleString()}</strong>`;
+    detail = `${a.title}剩餘 NT$ ${Number(a.remaining).toLocaleString()}`;
+    buttons = `
+      <button class="btn btn-primary" onclick="navigate('app')">回到首頁</button>
+      <button class="btn btn-secondary" onclick="navigate('transactions')">查看交易紀錄</button>
     `;
   } else if (a.type === 'daily') {
     iconName = 'favorite'; iconClass = 'gold-icon';
