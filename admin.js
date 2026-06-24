@@ -518,6 +518,7 @@ window.doCashback = async function() {
 // 她在你手機上感應 → 瀏覽器開啟 index 的 ?card= 入口 → 讀到 pending 執行扣款並顯示完成。
 // 同畫面保留「我已完成感應」按鈕作為備援（呼叫 commitPending）。
 let chargeBusy = false;
+let chargePoll = null;
 
 async function showChargeTap(pool, amount, note) {
   const container = document.getElementById('page-container');
@@ -556,10 +557,26 @@ async function showChargeTap(pool, amount, note) {
     </div>
   `;
   const st = await apiCall({ action: 'setPending', pAction: 'charge', id: pool.id, amount, note });
-  if (!st || !st.ok) showToast('連線失敗，請稍後再試', 'error');
+  if (!st || !st.ok) { showToast('連線失敗，請稍後再試', 'error'); return; }
+  startChargePoll();   // 她感應她那端完成後，這邊自動跳交易紀錄
+}
+
+function startChargePoll() {
+  clearInterval(chargePoll);
+  chargePoll = setInterval(async () => {
+    if (!document.querySelector('.tap-screen')) { clearInterval(chargePoll); return; }
+    const st = await apiFetchState();
+    if (st && st.ok && !st.pending) {
+      clearInterval(chargePoll);
+      applyServerState(st);
+      showToast('扣款完成', 'success');
+      navigate('admin-transactions');
+    }
+  }, 2500);
 }
 
 window.cancelCharge = async function() {
+  clearInterval(chargePoll);
   await apiCall({ action: 'clearPending' });
   handleRoute();   // hash 已是 admin-cashback，重繪回該頁
 };
@@ -567,6 +584,7 @@ window.cancelCharge = async function() {
 window.finishCharge = async function() {
   if (chargeBusy) return;
   chargeBusy = true;
+  clearInterval(chargePoll);
   const st = await apiCall({ action: 'commitPending' });
   chargeBusy = false;
   applyServerState(st);

@@ -121,6 +121,7 @@ const routes = {
   'welcome':      renderWelcome,
   'tap':          renderTap,
   'activate':     renderActivate,
+  'unlock':       renderUnlock,
   'app':          renderApp,
   'products':     renderProducts,
   'benefits':     renderBenefits,
@@ -163,21 +164,22 @@ function handleRoute() {
   container.scrollTop = 0;
 }
 
+let unlocked = false;   // 本次開啟是否已解鎖（每次冷啟動重置）
+let nfcEntry = false;   // 是否由 NFC（帶 ?card=）進入
+
 window.addEventListener('hashchange', handleRoute);
 window.addEventListener('DOMContentLoaded', () => {
   loadCache();
-  // NFC 感應進來會帶 ?card=...，記住卡號並走感應入口
   const cardParam = new URLSearchParams(location.search).get('card');
-  if (cardParam) { try { localStorage.setItem('gfc_card_token', cardParam); } catch (e) {} }
-  const goTap = !location.hash && !!cardParam;
+  if (cardParam) { try { localStorage.setItem('gfc_card_token', cardParam); } catch (e) {} nfcEntry = true; }
 
-  if (!location.hash) {
-    // 設定 hash 會觸發 hashchange → handleRoute
-    location.hash = goTap ? 'tap' : (appState.isActivated ? 'app' : 'welcome');
+  if (location.hash) {
+    handleRoute();            // 深層連結 / 重新整理：尊重現有 hash
+    refreshFromServer(true);
   } else {
-    handleRoute();
+    // 冷啟動：一律先到載入畫面，由 renderTap 抓 server 真實狀態後再決定去向
+    location.hash = 'tap';
   }
-  if (!goTap) refreshFromServer(true);  // 走 tap 時由 renderTap 自己抓
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -318,7 +320,7 @@ function renderWelcome(el) {
           <div class="nfc-pulse">${icon('contactless')}</div>
           <span>請拿起卡片，靠近 iPhone 頂部完成開卡</span>
         </div>
-        <button class="btn btn-primary" onclick="navigate('tap')">${icon('auto_awesome')} 我準備好開卡了</button>
+        <button class="btn btn-primary" onclick="navigate('activate')">${icon('auto_awesome')} 我準備好開卡了</button>
         <button class="btn btn-ghost" style="margin-top:10px;" onclick="window.location.href='admin.html'">管理端入口</button>
       </div>
     </div>
@@ -348,23 +350,24 @@ function renderTap(el) {
       </div>
     </div>
   `;
-  // 感應進來：抓最新 server 狀態
+  // 載入：抓 server 真實狀態後決定去向
   (async () => {
-    const minWait = new Promise(r => setTimeout(r, 1400));
+    const minWait = new Promise(r => setTimeout(r, 1300));
     await refreshFromServer(false);
-    // 若 server 有待處理動作（兌換/扣款）→ 感應即執行並顯示完成
-    if (appState.pending) {
+    // NFC 感應進來且 server 有待處理動作（兌換/扣款）→ 感應即執行並顯示完成
+    if (nfcEntry && appState.pending) {
       const st = await apiCall({ action: 'commitPending' });
       applyServerState(st);
-      await minWait;
       if (st && st.committed) {
         appState.lastAction = committedToAction(st.committed);
+        await minWait;
         navigate('success');
         return;
       }
     }
     await minWait;
-    navigate(appState.isActivated ? 'app' : 'activate');
+    if (!appState.isActivated) { navigate(nfcEntry ? 'activate' : 'welcome'); return; }
+    navigate(unlocked ? 'app' : 'unlock');   // 已開卡 → 先解鎖
   })();
 }
 
@@ -389,8 +392,9 @@ function renderActivate(el) {
           <input id="activate-name" class="input-field" type="text" value="${appState.card.holderName}" placeholder="妳的名字" />
         </div>
         <div class="form-row">
-          <label class="input-label">專屬暗號（可選）</label>
-          <input id="activate-code" class="input-field" type="text" placeholder="只有妳和我知道的暗語" />
+          <label class="input-label">設定交易密碼（4 位數字）</label>
+          <input id="activate-pin" class="input-field" type="tel" inputmode="numeric" maxlength="4" placeholder="每次兌換時要輸入" />
+          <div class="dim-text" style="font-size:11px;margin-top:2px;">這組密碼之後每次兌換都會用到，由妳自己決定</div>
         </div>
       </div>
 
@@ -401,16 +405,41 @@ function renderActivate(el) {
 
 window.doActivate = async function() {
   const name = document.getElementById('activate-name').value.trim() || 'Ariel';
+  const pin = (document.getElementById('activate-pin').value || '').replace(/\D/g, '').slice(0, 4);
+  if (pin.length !== 4) { showToast('請設定 4 位數字交易密碼', 'error'); return; }
   const btn = document.querySelector('.activate-page .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = '開通中…'; }
-  const st = await apiCall({ action: 'activate', holderName: name });
+  const st = await apiCall({ action: 'activate', holderName: name, pin });
   if (applyServerState(st)) {
+    unlocked = true;   // 剛開卡完直接視為已解鎖
     appState.lastAction = { type: 'activate', holderName: appState.card.holderName };
     navigate('success');
   } else {
     showToast((st && st.error) ? st.error : '開卡失敗，請檢查連線', 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = `${icon('credit_card')} 開通我的黑卡`; }
   }
+};
+
+// ── Page: Unlock（每次開啟先解鎖，像銀行 App）──
+
+function renderUnlock(el) {
+  el.innerHTML = `
+    <div class="unlock-screen">
+      <div class="unlock-brand">GIRLFRIEND BLACK CARD</div>
+      <button class="unlock-btn" onclick="unlockApp()">${icon('lock')}</button>
+      <div class="unlock-text">
+        <div class="unlock-hi">Hi, ${appState.card.holderName}</div>
+        <div class="unlock-hint">輕觸解鎖妳的專屬黑卡</div>
+      </div>
+    </div>
+  `;
+}
+
+window.unlockApp = function() {
+  unlocked = true;
+  const btn = document.querySelector('.unlock-btn');
+  if (btn) { btn.classList.add('unlocking'); btn.innerHTML = icon('lock_open'); }
+  setTimeout(() => navigate('app'), 280);
 };
 
 // ── Page: App Home ────────────────────────
@@ -644,9 +673,15 @@ function findBenefit(key, id) {
 // → 感應後瀏覽器開啟 ?card= 入口，讀到 server 的 pending 即執行兌換並顯示完成。
 //   同畫面保留「我已完成感應」按鈕作為備援（同樣呼叫 commitPending）。
 
-const PIN_CODE = '0823';        // 支付密碼（生日）
 let pinTarget = null;
 let redeemBusy = false;
+let redeemPoll = null;          // 感應畫面定時查詢是否已完成
+
+// 女友開卡時自己設定的交易密碼（存在 Card sheet，隨 state 回傳）
+function cardPin() {
+  const p = appState.card && appState.card.pin;
+  return (p === null || p === undefined || p === '') ? '' : String(p).padStart(4, '0');
+}
 
 window.confirmUseBenefit = function(key, id) {
   const item = findBenefit(key, id);
@@ -688,7 +723,8 @@ window.onPinInput = function() {
   const err = document.getElementById('pin-err');
   if (err) err.textContent = '';
   if (val.length === 4) {
-    if (val === PIN_CODE) {
+    const pin = cardPin();
+    if (!pin || val === pin) {
       const t = pinTarget; pinTarget = null;
       showRedeemTap(t.key, t.id);
     } else {
@@ -742,10 +778,27 @@ async function showRedeemTap(key, id) {
   `;
   // 把待處理動作寫到 server，供感應後開啟的新分頁讀取並執行
   const st = await apiCall({ action: 'setPending', pAction: 'redeem', id, title: item.title, unit });
-  if (!st || !st.ok) showToast('連線失敗，請稍後再試', 'error');
+  if (!st || !st.ok) { showToast('連線失敗，請稍後再試', 'error'); return; }
+  startRedeemPoll();   // 開始定時查詢：感應端完成後自動跳轉
+}
+
+// 定時查詢 server：當 pending 被感應端結算掉 → 自動到交易紀錄
+function startRedeemPoll() {
+  clearInterval(redeemPoll);
+  redeemPoll = setInterval(async () => {
+    if (!document.querySelector('.tap-screen')) { clearInterval(redeemPoll); return; }
+    const st = await apiFetchState();
+    if (st && st.ok && !st.pending) {        // 待處理已被結算
+      clearInterval(redeemPoll);
+      applyServerState(st);
+      showToast('兌換完成', 'success');
+      navigate('transactions');
+    }
+  }, 2500);
 }
 
 window.cancelRedeem = async function() {
+  clearInterval(redeemPoll);
   await apiCall({ action: 'clearPending' });
   handleRoute();   // hash 已是 products，重繪回兌換頁
 };
@@ -753,6 +806,7 @@ window.cancelRedeem = async function() {
 window.finishRedeem = async function() {
   if (redeemBusy) return;
   redeemBusy = true;
+  clearInterval(redeemPoll);
   const st = await apiCall({ action: 'commitPending' });
   redeemBusy = false;
   applyServerState(st);
@@ -761,7 +815,7 @@ window.finishRedeem = async function() {
     navigate('success');
   } else {
     showToast('尚未感應或交易已完成', 'info');
-    handleRoute();
+    navigate('transactions');
   }
 };
 

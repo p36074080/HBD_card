@@ -109,18 +109,20 @@ function getState_() {
     ok: true,
     card: readCard_(),
     benefits: readBenefits_(),     // { id: {total, remaining} }
-    transactions: readTransactions_()
+    transactions: readTransactions_(),
+    pending: getPending_()         // 待感應完成的動作（或 null）
   };
 }
 
 function readCard_() {
-  const v = ss_().getSheetByName('Card').getRange(2, 1, 1, 5).getValues()[0];
+  const v = ss_().getSheetByName('Card').getRange(2, 1, 1, 6).getValues()[0];
   return {
     holderName: v[0],
     status: v[1],
     activatedAt: v[2] instanceof Date ? fmtDate_(v[2]) : v[2],
     displayCardNumber: v[3],
-    validThru: v[4]
+    validThru: v[4],
+    pin: v[5] === '' ? '' : String(v[5])   // 交易密碼（女友自設）
   };
 }
 
@@ -163,8 +165,71 @@ function handleAction_(b) {
     case 'restoreBenefit':  return doRestoreBenefit_(b);
     case 'activate':        return doActivate_(b);
     case 'reset':           return doReset_(b);
+    case 'setPending':      return setPending_(b);
+    case 'clearPending':    return clearPending_(b);
+    case 'commitPending':   return commitPending_(b);
     default:                return { ok: false, error: 'unknown action: ' + b.action };
   }
+}
+
+/* ───────── 待處理動作（感應後才完成）─────────
+   存在 ScriptProperties（不寫進試算表），跨 Safari/PWA 共用。 */
+function getPending_() {
+  const raw = PropertiesService.getScriptProperties().getProperty('pending');
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw);
+    return { action: p.action, id: p.id, title: p.title, amount: p.amount, unit: p.unit };
+  } catch (e) { return null; }
+}
+
+function setPending_(b) {
+  const pend = { action: b.pAction, id: b.id, amount: b.amount, note: b.note, title: b.title, unit: b.unit, ts: Date.now() };
+  PropertiesService.getScriptProperties().setProperty('pending', JSON.stringify(pend));
+  return getState_();
+}
+
+function clearPending_(b) {
+  PropertiesService.getScriptProperties().deleteProperty('pending');
+  return getState_();
+}
+
+/* 感應後呼叫：執行 pending 並清除（doPost 已上鎖，避免重複執行） */
+function commitPending_(b) {
+  const props = PropertiesService.getScriptProperties();
+  const raw = props.getProperty('pending');
+  if (!raw) { const s = getState_(); s.committed = null; return s; }
+  props.deleteProperty('pending');               // 先清除，第二個來的人就拿不到
+
+  const pend = JSON.parse(raw);
+  // 太舊的 pending 視為失效（避免殘留誤觸）
+  if (Date.now() - (pend.ts || 0) > 10 * 60 * 1000) {
+    const s = getState_(); s.committed = null; return s;
+  }
+
+  let committed = null;
+  if (pend.action === 'redeem') {
+    const it = benefitRow_(pend.id);
+    if (it && it.remaining > 0) {
+      const remaining = it.remaining - 1;
+      writeBenefit_(it, remaining);
+      const unit = pend.unit || '次';
+      appendTxn_({ type: 'redeem', title: '兌換 ' + it.title, amount: null, note: '剩餘 ' + remaining + ' ' + unit, createdBy: 'holder' });
+      committed = { action: 'redeem', title: it.title, remaining: remaining, unit: unit };
+    }
+  } else if (pend.action === 'charge') {
+    const it = benefitRow_(pend.id);
+    const amount = Number(pend.amount);
+    if (it && amount > 0 && amount <= it.remaining) {
+      writeBenefit_(it, it.remaining - amount);
+      appendTxn_({ type: 'charge', title: it.title + ' · 扣款', amount: -amount, note: pend.note || it.title, createdBy: 'admin' });
+      committed = { action: 'charge', title: it.title, amount: amount, remaining: it.remaining - amount };
+    }
+  }
+
+  const out = getState_();
+  out.committed = committed;
+  return out;
 }
 
 function benefitRow_(id) {
@@ -248,12 +313,13 @@ function doRestoreBenefit_(b) {
   return getState_();
 }
 
-/* 開卡 */
+/* 開卡（含女友自設的交易密碼） */
 function doActivate_(b) {
   const sh = ss_().getSheetByName('Card');
   if (b.holderName) sh.getRange(2, 1).setValue(b.holderName);
   sh.getRange(2, 2).setValue('active');
   sh.getRange(2, 3).setValue(new Date());
+  if (b.pin) sh.getRange(2, 6).setNumberFormat('@').setValue(String(b.pin)); // 文字格式保留開頭 0
   return getState_();
 }
 
@@ -272,6 +338,7 @@ function doReset_(b) {
   const tx = ss_().getSheetByName('Transactions');
   if (tx.getLastRow() > 1) tx.deleteRows(2, tx.getLastRow() - 1); // 保留標題列
 
+  PropertiesService.getScriptProperties().deleteProperty('pending'); // 清掉待處理動作
   return getState_();
 }
 
@@ -287,8 +354,9 @@ function setupSheet() {
   // Card
   let card = ss.getSheetByName('Card') || ss.insertSheet('Card');
   card.clear();
-  card.getRange(1, 1, 1, 5).setValues([['holderName', 'status', 'activatedAt', 'displayCardNumber', 'validThru']]);
-  card.getRange(2, 1, 1, 5).setValues([['Ariel', 'active', new Date('2026-06-15'), '0520 1314 0001', 'FOREVER']]);
+  card.getRange(1, 1, 1, 6).setValues([['holderName', 'status', 'activatedAt', 'displayCardNumber', 'validThru', 'pin']]);
+  card.getRange(2, 6).setNumberFormat('@');   // pin 用文字格式（保留開頭 0）
+  card.getRange(2, 1, 1, 6).setValues([['Ariel', 'inactive', '', '0520 1314 0001', 'FOREVER', '']]);
 
   // Benefits
   let ben = ss.getSheetByName('Benefits') || ss.insertSheet('Benefits');

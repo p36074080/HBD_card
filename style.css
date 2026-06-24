@@ -1449,6 +1449,48 @@ select.input-field { appearance: none; -webkit-appearance: none; }
 .reload-btn.spinning .material-symbols-outlined { animation: reloadSpin 0.8s linear infinite; }
 @keyframes reloadSpin { to { transform: rotate(360deg); } }
 
+/* ── Unlock 解鎖畫面 ── */
+.unlock-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 48px 28px;
+  gap: 30px;
+  text-align: center;
+}
+.unlock-brand {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--gold-dim);
+  text-transform: uppercase;
+}
+.unlock-btn {
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: radial-gradient(circle at 50% 35%, rgba(196,137,126,0.22) 0%, rgba(196,137,126,0.05) 70%);
+  color: var(--gold-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 0 0 0 rgba(196,137,126,0.4);
+  animation: unlockPulse 2.4s ease-in-out infinite;
+  transition: transform 0.2s;
+}
+.unlock-btn:active { transform: scale(0.94); }
+.unlock-btn .material-symbols-outlined { font-size: 40px; }
+.unlock-btn.unlocking { animation: none; border-color: var(--gold); color: var(--gold); }
+@keyframes unlockPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(196,137,126,0.35); }
+  50%      { box-shadow: 0 0 0 16px rgba(196,137,126,0); }
+}
+.unlock-hi { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.unlock-hint { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+
 /* ── 支付密碼 PIN ── */
 .pin-screen {
   display: flex;
