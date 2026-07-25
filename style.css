@@ -365,8 +365,73 @@ select.input-field { appearance: none; -webkit-appearance: none; }
 }
 .mc-brand::after { content: '.'; }
 
+/* 使用 card/ 卡面圖：露出圖片、關閉玫瑰金金屬光效與程式繪製元件 */
+.black-card.faced {
+  background-color: #000;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.black-card.faced::before,
+.black-card.faced::after { display: none; }
+.black-card.faced .mc-chip,
+.black-card.faced .mc-since,
+.black-card.faced .mc-network { display: none; }
+.black-card.faced .mc-holder {
+  left: 30px; bottom: 28px;
+  color: #F3E7DE;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+.black-card.faced.card-sm .mc-holder { left: 22px; bottom: 20px; font-size: 14px; }
+
 /* 小尺寸卡（開卡頁）*/
 .black-card.card-sm { max-width: 300px; }
+
+/* 卡片資訊頁標題列 + 更換卡面按鈕 */
+.card-page-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.icon-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--gold-light);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.icon-btn:active { transform: scale(0.94); }
+.icon-btn .material-symbols-outlined { font-size: 20px; }
+
+/* 更換卡面 bottom sheet */
+.face-sheet { display: flex; flex-direction: column; }
+.face-sub { font-size: 13px; color: var(--text-secondary); margin: 2px 0 16px; }
+.face-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  max-height: 52vh; overflow-y: auto;
+  margin-bottom: 16px;
+  padding: 2px;
+}
+.face-opt {
+  position: relative;
+  padding: 0; border: 2px solid transparent; background: none;
+  border-radius: 12px; overflow: hidden;
+  aspect-ratio: 1.586;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  transition: border-color 0.15s ease, transform 0.12s ease;
+}
+.face-opt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.face-opt:active { transform: scale(0.97); }
+.face-opt.active { border-color: var(--gold-light); }
+.face-check {
+  position: absolute; right: 5px; top: 5px;
+  color: var(--gold-light);
+  background: rgba(0,0,0,0.55);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.face-check .material-symbols-outlined { font-size: 20px; }
 
 /* ── Welcome Page ── */
 .welcome-page {

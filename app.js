@@ -14,7 +14,8 @@ const mockCard = {
   balance: 5200,
   monthlyLimit: 13140,
   activatedAt: "2026-06-15",
-  validThru: "FOREVER"
+  validThru: "FOREVER",
+  face: "c01"
 };
 
 const PRAISES = [
@@ -265,21 +266,14 @@ function renderBottomNav(el, active) {
   `).join('');
 }
 
-// ── Rose Gold Metal Card ──────────────────
-// 玫瑰金 Mastercard 樣式（示意；之後可整張替換成正式卡面設計）
+// ── 卡面（使用 card/ 內的設計圖，程式僅保留持卡人姓名）──
+// 卡面圖已含晶片/感應/logo 等，故隱藏程式繪製的 chip / member since / mastercard
 function renderBlackCard(card, size = 'full') {
   const holder = (card.holderName || 'MEMBER').toUpperCase();
-  const ym = card.activatedAt && String(card.activatedAt).match(/\d{4}/);
-  const year = ym ? ym[0] : '2024';
+  const face = cardFaceId(card);
   return `
-    <div class="black-card ${size === 'small' ? 'card-sm' : ''}">
-      <div class="mc-chip"></div>
+    <div class="black-card faced ${size === 'small' ? 'card-sm' : ''}" style="background-image:url('card/${face}.png')">
       <div class="mc-holder">${holder}</div>
-      <div class="mc-since">MEMBER SINCE ${year}</div>
-      <div class="mc-network">
-        <div class="mc-circles"><span class="mc-c-red"></span><span class="mc-c-yellow"></span></div>
-        <div class="mc-brand">mastercard</div>
-      </div>
     </div>
   `;
 }
@@ -894,8 +888,9 @@ function renderCardInfo(el) {
   const card = appState.card;
   el.innerHTML = `
     <div class="card-page">
-      <div>
+      <div class="card-page-head">
         <h1>卡片資訊</h1>
+        <button class="icon-btn" onclick="openFaceEditor()" aria-label="更換卡面">${icon('style')}</button>
       </div>
       ${renderBlackCard(card)}
       <div class="card">
@@ -932,6 +927,36 @@ function renderCardInfo(el) {
     </div>
   `;
 }
+
+// ── 更換卡面（bottom sheet）──────────────
+window.openFaceEditor = function() {
+  const cur = cardFaceId(appState.card);
+  const grid = CARD_FACES.map(f => `
+    <button class="face-opt ${f === cur ? 'active' : ''}" onclick="selectFace('${f}')" aria-label="卡面 ${f}">
+      <img src="card/${f}.png" alt="卡面 ${f}" loading="lazy" />
+      ${f === cur ? `<span class="face-check">${icon('check_circle')}</span>` : ''}
+    </button>
+  `).join('');
+  showModal(`
+    <div class="face-sheet">
+      <div class="modal-title">選擇卡面</div>
+      <div class="face-sub">挑一款妳喜歡的卡片樣式，隨時都能換</div>
+      <div class="face-grid">${grid}</div>
+      <button class="btn btn-ghost" onclick="closeModal()">關閉</button>
+    </div>
+  `);
+};
+
+window.selectFace = async function(face) {
+  if (CARD_FACES.indexOf(face) < 0) return;
+  if (cardFaceId(appState.card) === face) { closeModal(); return; }
+  appState.card.face = face;      // 立即換卡面（樂觀更新）
+  saveCache();
+  closeModal();
+  handleRoute();
+  showToast('已更換卡面', 'success');
+  try { const st = await apiCall({ action: 'setCardFace', face }); if (st && st.ok) applyServerState(st); } catch (e) {}
+};
 
 // ── Benefit usage ─────────────────────────
 

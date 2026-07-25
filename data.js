@@ -95,6 +95,14 @@ function favoriteList(benefits) {
     .slice(0, 5);
 }
 
+// ── 卡面樣式（女友可自選）────────────────
+// 圖檔放在 card/ 資料夾：c01.png ~ c09.png；Card sheet 用 face 欄位記錄目前選擇
+const CARD_FACES = ['c01', 'c02', 'c03', 'c04', 'c05', 'c06', 'c07', 'c08', 'c09'];
+function cardFaceId(card) {
+  const f = card && card.face;
+  return CARD_FACES.indexOf(f) >= 0 ? f : 'c01';   // 預設 c01
+}
+
 // ── Material Symbols helper ───────────────
 // Renders a Google Material Symbols (Outlined) glyph.
 // Size/color are inherited from the parent container.
