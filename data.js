@@ -19,16 +19,80 @@ async function apiCall(payload) {
   return res.json();
 }
 
+// 按鈕 loading：執行期間禁用並顯示旋轉圖示，避免重複點、讓用戶知道系統在跑
+async function runWithLoading(btn, fn) {
+  if (btn && btn.dataset && btn.dataset.loading === '1') return;
+  let orig;
+  if (btn) {
+    orig = btn.innerHTML;
+    btn.dataset.loading = '1';
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.classList.add('is-loading');
+    btn.innerHTML = '<span class="btn-spinner"></span>';
+  }
+  try {
+    return await fn();
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('連線失敗，請稍後再試', 'error');
+  } finally {
+    if (btn && document.body.contains(btn)) {   // 若已導頁/重繪則不還原
+      btn.dataset.loading = '0';
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.classList.remove('is-loading');
+      btn.innerHTML = orig;
+    }
+  }
+}
+window.runWithLoading = runWithLoading;
+
 // 把 server 的 {id:{total,remaining}} 蓋進程式內的權益目錄（圖示/文案/分類留在 data.js）
 function mergeBenefitsFromServer(serverBenefits) {
   const cat = cloneBenefits();
   if (serverBenefits) {
     Object.keys(cat).forEach(k => cat[k].items.forEach(it => {
       const s = serverBenefits[it.id];
-      if (s) { it.remaining = s.remaining; it.total = s.total; }
+      if (s) {
+        it.remaining = s.remaining;
+        it.total = s.total;
+        if ('fav' in s) it.fav = !!s.fav;
+        if ('favOrder' in s) it.favOrder = s.favOrder || 0;
+      }
     }));
   }
   return cat;
+}
+
+// ── 經常兌換（首頁快捷）helpers ──
+// 可被加入常用的項目 = 兌換中心的 count 類（票券 / 專屬禮遇 / 升艙）
+function favoritableItems(benefits) {
+  const out = [];
+  BENEFIT_ORDER.forEach(k => {
+    if (k === 'gift') return;                 // 禮物卡為一次性特別項，不放常用
+    const cat = benefits[k];
+    if (!cat) return;
+    cat.items.forEach(it => { if (it.kind === 'count') out.push({ key: k, item: it }); });
+  });
+  return out;
+}
+
+function findBenefitAny(benefits, id) {
+  for (const k of BENEFIT_ORDER) {
+    const cat = benefits[k];
+    if (!cat) continue;
+    const it = cat.items.find(i => i.id === id);
+    if (it) return { key: k, item: it };
+  }
+  return null;
+}
+
+// 首頁要顯示的常用清單：fav 為真、依 favOrder 由小到大、最多 5 個
+function favoriteList(benefits) {
+  return favoritableItems(benefits)
+    .filter(x => x.item.fav)
+    .sort((a, b) => (a.item.favOrder || 99) - (b.item.favOrder || 99))
+    .slice(0, 5);
 }
 
 // ── Material Symbols helper ───────────────
@@ -63,8 +127,8 @@ const BENEFITS_DEFAULT = {
     items: [
       { id: 'v_massage',   title: '15 分鐘按摩券',  icon: 'spa',            kind: 'count', unit: '張', total: 6,  remaining: 6  },
       { id: 'v_wash',      title: '洗頭服務',        icon: 'shower',         kind: 'count', unit: '張', total: 6,  remaining: 6  },
-      { id: 'v_dessert',   title: '甜品下午茶兌換券', icon: 'cake',          kind: 'count', unit: '張', total: 6,  remaining: 6  },
-      { id: 'v_drink',     title: '手搖兌換券',      icon: 'local_cafe',     kind: 'count', unit: '張', total: 12, remaining: 12 },
+      { id: 'v_dessert',   title: '甜品下午茶兌換券', icon: 'cake',          kind: 'count', unit: '張', total: 6,  remaining: 6, fav: true, favOrder: 1 },
+      { id: 'v_drink',     title: '手搖兌換券',      icon: 'local_cafe',     kind: 'count', unit: '張', total: 12, remaining: 12, fav: true, favOrder: 2 },
       { id: 'v_blowdry',   title: '吹頭服務券',      icon: 'dry',            kind: 'count', unit: '張', total: 12, remaining: 12 },
       { id: 'v_bouquet',   title: '花束券',          icon: 'local_florist',  kind: 'count', unit: '張', total: 2,  remaining: 2  },
       { id: 'v_breakfast', title: '早餐送到床邊券',   icon: 'free_breakfast', kind: 'count', unit: '張', total: 6,  remaining: 6  },
@@ -77,8 +141,8 @@ const BENEFITS_DEFAULT = {
     sublabel: 'Exclusive Privileges',
     icon: 'workspace_premium',
     items: [
-      { id: 'pr_pickup',   title: '上下班專屬接送', icon: 'directions_car',     kind: 'count', unit: '次/年', total: 6, remaining: 6 },
-      { id: 'pr_chores',   title: '一週家事代理',   icon: 'cleaning_services',  kind: 'count', unit: '次/年', total: 6, remaining: 6 },
+      { id: 'pr_pickup',   title: '上下班專屬接送', icon: 'directions_car',     kind: 'count', unit: '次/年', total: 6, remaining: 6, fav: true, favOrder: 3 },
+      { id: 'pr_chores',   title: '一週家事代理',   icon: 'cleaning_services',  kind: 'count', unit: '次/年', total: 6, remaining: 6, fav: true, favOrder: 4 },
       { id: 'pr_aroma',    title: '專屬芳療體驗',   icon: 'spa',                kind: 'count', unit: '次/年', total: 2, remaining: 2 },
       { id: 'pr_intimacy', title: '專屬情慾體驗',   icon: 'favorite',           kind: 'count', unit: '次/年', total: 4, remaining: 4 },
       { id: 'pr_date',     title: '專屬約會企劃',   icon: 'celebration',        kind: 'count', unit: '次/年', total: 1, remaining: 1 },
@@ -93,7 +157,7 @@ const BENEFITS_DEFAULT = {
       { id: 'tr_coffee',   title: '登機前咖啡禮遇', icon: 'coffee',                     kind: 'unlimited', desc: '每趟飛行前一杯機場咖啡或飲料' },
       { id: 'tr_luggage',  title: '行李整理協助服務', icon: 'luggage',                   kind: 'unlimited', desc: '去程協助整理、回程協助整理戰利品 · 限獨旅或與熊熊同遊' },
       { id: 'tr_room',     title: '夢幻住宿升等服務', icon: 'hotel',                     kind: 'unlimited', desc: '熊熊幫你出差額升級住宿 · 限獨旅或與熊熊同遊' },
-      { id: 'tr_cabin',    title: '舒適飛行升艙服務', icon: 'airline_seat_recline_extra', kind: 'count', unit: '次/年', total: 4, remaining: 4, desc: '熊熊幫你出差額升級商務艙（限員購票）· 限獨旅或與熊熊同遊' }
+      { id: 'tr_cabin',    title: '舒適飛行升艙服務', icon: 'airline_seat_recline_extra', kind: 'count', unit: '次/年', total: 4, remaining: 4, fav: true, favOrder: 5, desc: '熊熊幫你出差額升級商務艙（限員購票）· 限獨旅或與熊熊同遊' }
     ]
   },
   discounts: {
@@ -120,10 +184,18 @@ const BENEFITS_DEFAULT = {
       { id: 'bs_hug',     title: '睡前抱抱與安撫服務', icon: 'bedtime',        kind: 'always' },
       { id: 'bs_kiss',    title: '所有消費享有親吻回饋', icon: 'favorite',     kind: 'always' }
     ]
+  },
+  gift: {
+    label: '禮物',
+    sublabel: 'Gift',
+    icon: 'card_giftcard',
+    items: [
+      { id: 'gift_bag', title: '夢幻包款兌換券', icon: 'shopping_bag', kind: 'count', unit: '個', total: 1, remaining: 1, desc: '兌換一顆妳的夢幻包款' }
+    ]
   }
 };
 
-const BENEFIT_ORDER = ['cashback', 'vouchers', 'privileges', 'travel', 'discounts', 'basic'];
+const BENEFIT_ORDER = ['cashback', 'vouchers', 'privileges', 'travel', 'discounts', 'basic', 'gift'];
 
 function cloneBenefits() {
   return JSON.parse(JSON.stringify(BENEFITS_DEFAULT));

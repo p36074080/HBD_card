@@ -2,7 +2,7 @@
    Network-first so deploys/edits show immediately when online,
    with cache fallback for offline use. */
 
-const CACHE_NAME = 'gfc-v2';
+const CACHE_NAME = 'gfc-v3';
 const ASSETS = [
   './index.html',
   './admin.html',
@@ -10,7 +10,10 @@ const ASSETS = [
   './data.js',
   './app.js',
   './admin.js',
-  './manifest.json'
+  './manifest.json',
+  './icons/icon-j-180.png',
+  './icons/icon-j-512.png',
+  './icons/pay-qr.png'
 ];
 
 self.addEventListener('install', e => {

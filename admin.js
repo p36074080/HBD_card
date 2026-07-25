@@ -105,6 +105,7 @@ function currentRoute() {
 
 function handleRoute() {
   const route = currentRoute();
+  if (typeof stopScanner === 'function') stopScanner();   // 離開掃描頁務必關相機
   const fn = routes[route] || renderAdminHome;
   const container = document.getElementById('page-container');
   const nav = document.getElementById('bottom-nav');
@@ -152,28 +153,17 @@ function renderBottomNav(el, active) {
 // ── Shared Components ─────────────────────
 
 function renderBlackCard(card, size = 'full') {
+  const holder = (card.holderName || 'MEMBER').toUpperCase();
+  const ym = card.activatedAt && String(card.activatedAt).match(/\d{4}/);
+  const year = ym ? ym[0] : '2024';
   return `
-    <div class="black-card" style="${size === 'small' ? 'max-width:280px;' : ''}">
-      <div class="card-brand">♠</div>
-      <div class="card-logo">Girlfriend Black Card</div>
-      <div class="card-chip"></div>
-      <div class="card-nfc">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M20 12a8 8 0 0 1-8 8 8 8 0 0 1-8-8 8 8 0 0 1 8-8"/>
-          <path d="M16 12a4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4"/>
-          <circle cx="12" cy="12" r="1"/>
-        </svg>
-      </div>
-      <div class="card-number">${card.displayCardNumber}</div>
-      <div class="card-footer">
-        <div>
-          <div class="card-holder-label">Card Holder</div>
-          <div class="card-holder-name">${card.holderName}</div>
-        </div>
-        <div class="card-valid">
-          <div class="card-valid-label">Valid Thru</div>
-          <div class="card-valid-date">${card.validThru}</div>
-        </div>
+    <div class="black-card ${size === 'small' ? 'card-sm' : ''}">
+      <div class="mc-chip"></div>
+      <div class="mc-holder">${holder}</div>
+      <div class="mc-since">MEMBER SINCE ${year}</div>
+      <div class="mc-network">
+        <div class="mc-circles"><span class="mc-c-red"></span><span class="mc-c-yellow"></span></div>
+        <div class="mc-brand">mastercard</div>
       </div>
     </div>
   `;
@@ -281,16 +271,16 @@ window.confirmReset = function() {
       用於測試完整流程，此動作無法復原。
     </div>
     <div class="modal-actions">
-      <button class="btn btn-danger" onclick="doReset()">確認重置</button>
+      <button class="btn btn-danger" onclick="runWithLoading(this, () => doReset())">確認重置</button>
       <button class="btn btn-ghost" onclick="closeModal()">取消</button>
     </div>
   `);
 };
 
 window.doReset = async function() {
-  closeModal();
   const st = await apiCall({ action: 'reset' });
   if (!applyServerState(st)) { showToast((st && st.error) || '重置失敗，請檢查連線', 'error'); return; }
+  closeModal();
   showToast('已重置為未開卡狀態', 'success');
   handleRoute();
 };
@@ -389,8 +379,8 @@ window.adminManageBenefit = function(key, id) {
       <input id="benefit-set" class="input-field" type="number" inputmode="numeric" value="${item.remaining}" />
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="adminSetBenefit('${key}','${id}')">儲存</button>
-      <button class="btn btn-secondary" onclick="adminRestoreBenefit('${key}','${id}')">補滿至總額</button>
+      <button class="btn btn-primary" onclick="runWithLoading(this, () => adminSetBenefit('${key}','${id}'))">儲存</button>
+      <button class="btn btn-secondary" onclick="runWithLoading(this, () => adminRestoreBenefit('${key}','${id}'))">補滿至總額</button>
       <button class="btn btn-ghost" onclick="closeModal()">取消</button>
     </div>
   `);
@@ -402,9 +392,9 @@ window.adminSetBenefit = async function(key, id) {
   let val = parseInt(document.getElementById('benefit-set').value, 10);
   if (isNaN(val) || val < 0) { showToast('請輸入有效數值', 'error'); return; }
   if (val > item.total) val = item.total;
-  closeModal();
   const st = await apiCall({ action: 'setBenefit', id, remaining: val });
   if (!applyServerState(st)) { showToast((st && st.error) || '更新失敗，請檢查連線', 'error'); return; }
+  closeModal();
   showToast(`已更新 ${item.title}`, 'success');
   renderAdminCard(document.querySelector('.page'));
 };
@@ -412,9 +402,9 @@ window.adminSetBenefit = async function(key, id) {
 window.adminRestoreBenefit = async function(key, id) {
   const item = findBenefit(key, id);
   if (!item) return;
-  closeModal();
   const st = await apiCall({ action: 'restoreBenefit', id });
   if (!applyServerState(st)) { showToast((st && st.error) || '更新失敗，請檢查連線', 'error'); return; }
+  closeModal();
   showToast(`已補滿 ${item.title}`, 'success');
   renderAdminCard(document.querySelector('.page'));
 };
@@ -473,8 +463,14 @@ function renderAdminCashback(el) {
       </div>
 
       <button class="btn ${isCharge ? 'btn-danger' : 'btn-primary'}" onclick="doCashback()">
-        ${isCharge ? '確認扣款並感應' : '確認儲值'}
+        ${isCharge ? icon('contactless') + ' 確認扣款並感應' : '確認儲值'}
       </button>
+      ${isCharge ? `
+      <button class="btn btn-outline" onclick="doCashbackScan()" style="margin-top:12px;">
+        ${icon('qr_code_scanner')} 確認扣款並掃描
+      </button>
+      <div class="admin-hint" style="text-align:center;margin-top:10px;">忘記帶卡片時，改用相機掃描她 App 的支付條碼</div>
+      ` : ''}
     </div>
   `;
 }
@@ -514,6 +510,17 @@ window.doCashback = async function() {
   }
 };
 
+// 掃描條碼扣款：驗證同扣款，改成開相機掃描她 App 的支付條碼
+window.doCashbackScan = function() {
+  const amount = parseInt(cashbackAmount, 10);
+  if (!amount || amount <= 0) { showToast('請輸入有效金額', 'error'); return; }
+  const pool = findBenefit('cashback', cashbackPool);
+  if (!pool) return;
+  const note = (document.getElementById('cashback-note').value || '').trim() || pool.title;
+  if (amount > pool.remaining) { showToast(`超過剩餘額度（NT$ ${pool.remaining.toLocaleString()}）`, 'error'); return; }
+  showChargeScan(pool, amount, note);
+};
+
 // 扣款需感應：把 pending 寫到 server → 顯示「請她感應你的手機」
 // 她在你手機上感應 → 瀏覽器開啟 index 的 ?card= 入口 → 讀到 pending 執行扣款並顯示完成。
 // 同畫面保留「我已完成感應」按鈕作為備援（呼叫 commitPending）。
@@ -551,8 +558,8 @@ async function showChargeTap(pool, amount, note) {
       </div>
       <div class="tap-hint">感應後開啟的頁面會自動完成扣款</div>
       <div class="tap-actions">
-        <button class="btn btn-danger" onclick="finishCharge()">${icon('check_circle')} 我已完成感應</button>
-        <button class="btn btn-ghost" onclick="cancelCharge()">取消</button>
+        <button class="btn btn-danger" onclick="runWithLoading(this, () => finishCharge())">${icon('check_circle')} 我已完成感應</button>
+        <button class="btn btn-ghost" onclick="runWithLoading(this, () => cancelCharge())">取消</button>
       </div>
     </div>
   `;
@@ -597,6 +604,161 @@ window.finishCharge = async function() {
     showToast('尚未感應或交易已完成', 'info');
     handleRoute();
   }
+};
+
+// ── 掃描條碼扣款（相機）───────────────────
+// 設 pending → 開相機掃描她 App 的支付條碼 → 讀到卡號即 commitPending（等同 NFC 感應）
+let scanStream = null;
+let scanRAF = null;
+let scanBusy = false;
+
+function stopScanner() {
+  if (scanRAF) { cancelAnimationFrame(scanRAF); scanRAF = null; }
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+}
+
+async function showChargeScan(pool, amount, note) {
+  stopScanner();
+  scanBusy = false;
+  const container = document.getElementById('page-container');
+  document.getElementById('bottom-nav').classList.add('hidden');
+  const div = document.createElement('div');
+  div.className = 'page';
+  container.innerHTML = '';
+  container.appendChild(div);
+  div.innerHTML = `
+    <div class="scan-screen">
+      <div class="scan-head">
+        <div class="eyebrow" style="font-size:10px;letter-spacing:0.2em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:10px;">QR Charge</div>
+        <div class="tap-title">掃描她的<br/>支付條碼</div>
+        <div class="tap-sub" style="margin-top:10px;">請她在 App 首頁點卡片出示支付條碼</div>
+      </div>
+      <div class="scan-viewport">
+        <video id="scan-video" playsinline muted></video>
+        <div class="scan-frame"></div>
+        <div class="scan-status" id="scan-status">啟動相機中…</div>
+      </div>
+      <div class="tap-detail-box">
+        <div class="tap-detail-row">
+          <span class="tap-detail-label">扣款項目</span>
+          <span class="tap-detail-value">${pool.title}</span>
+        </div>
+        <div class="tap-detail-row">
+          <span class="tap-detail-label">扣款金額</span>
+          <span class="tap-detail-value" style="color:var(--danger);">- NT$ ${amount.toLocaleString()}</span>
+        </div>
+        <div class="tap-detail-row">
+          <span class="tap-detail-label">扣款後剩餘</span>
+          <span class="tap-detail-value gold-text">NT$ ${(pool.remaining - amount).toLocaleString()}</span>
+        </div>
+      </div>
+      <div class="tap-actions">
+        <button class="btn btn-ghost" onclick="runWithLoading(this, () => cancelScan())">取消</button>
+      </div>
+    </div>
+  `;
+  const st = await apiCall({ action: 'setPending', pAction: 'charge', id: pool.id, amount, note });
+  if (!st || !st.ok) { showToast('連線失敗，請稍後再試', 'error'); return; }
+  startScanner();
+}
+
+async function startScanner() {
+  const video = document.getElementById('scan-video');
+  const statusEl = document.getElementById('scan-status');
+  if (!video) return;
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = scanStream;
+    await video.play();
+    if (statusEl) statusEl.textContent = '將條碼對準框內';
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '無法開啟相機，請確認已允許相機權限';
+    showToast('無法開啟相機', 'error');
+    return;
+  }
+
+  // 優先用原生 BarcodeDetector，否則退回 jsQR（iOS Safari 用）
+  let detector = null;
+  if ('BarcodeDetector' in window) {
+    try { detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { detector = null; }
+  }
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let lastBadAt = 0;
+
+  async function tick() {
+    if (scanBusy || !document.getElementById('scan-video')) { return; }
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      let text = null;
+      try {
+        if (detector) {
+          const codes = await detector.detect(video);
+          if (codes && codes.length) text = codes[0].rawValue;
+        } else if (typeof jsQR === 'function') {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+          if (code) text = code.data;
+        }
+      } catch (e) {}
+      if (text) {
+        const token = extractCardToken(text);
+        const expected = (typeof mockCard !== 'undefined' && mockCard.cardToken) ? mockCard.cardToken : null;
+        if (token && (!expected || token === expected)) { commitScan(); return; }
+        // 掃到但不是她的支付條碼 → 提示後繼續掃
+        lastBadAt = performance.now();
+        if (statusEl) statusEl.textContent = '這不是她的支付條碼，請重新對準';
+      } else if (statusEl && performance.now() - lastBadAt > 1500 && statusEl.textContent !== '將條碼對準框內') {
+        statusEl.textContent = '將條碼對準框內';
+      }
+    }
+    scanRAF = requestAnimationFrame(tick);
+  }
+  scanRAF = requestAnimationFrame(tick);
+}
+
+// 解析掃到的內容，取出卡號 token
+function extractCardToken(text) {
+  if (!text) return null;
+  try {
+    const u = new URL(text);
+    const c = u.searchParams.get('card');
+    if (c) return c;
+  } catch (e) {}
+  const m = String(text).match(/card=([A-Za-z0-9_]+)/);
+  if (m) return m[1];
+  if (/^c_/.test(String(text).trim())) return String(text).trim();
+  return null;
+}
+
+// 掃到正確條碼 → commitPending（等同 NFC 感應完成）→ 交易成功頁
+async function commitScan() {
+  if (scanBusy) return;
+  scanBusy = true;
+  stopScanner();
+  const statusEl = document.getElementById('scan-status');
+  if (statusEl) statusEl.textContent = '掃描成功，扣款中…';
+  const st = await apiCall({ action: 'commitPending' });
+  scanBusy = false;
+  applyServerState(st);
+  if (st && st.committed && st.committed.action === 'charge') {
+    const c = st.committed;
+    adminState.lastAction = { type: 'charge', amount: c.amount, poolTitle: c.title, remaining: c.remaining };
+    cashbackAmount = '';
+    showToast('扣款完成', 'success');
+    navigate('success');
+  } else {
+    showToast('交易已完成或已取消', 'info');
+    navigate('admin-cashback');
+  }
+}
+
+window.cancelScan = async function() {
+  stopScanner();
+  await apiCall({ action: 'clearPending' });
+  navigate('admin-cashback');
 };
 
 // ── Page: Admin Transactions ──────────────

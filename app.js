@@ -203,65 +203,76 @@ function renderBottomNav(el, active) {
   `).join('');
 }
 
-// ── Black Card Component ──────────────────
-
-function renderBlackCard(card, size = 'full', balanceTotal = null) {
-  const nfcSvg = `
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M20 12a8 8 0 0 1-8 8 8 8 0 0 1-8-8 8 8 0 0 1 8-8"/>
-      <path d="M16 12a4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4"/>
-      <circle cx="12" cy="12" r="1"/>
-    </svg>`;
-
-  // Balance variant — total 可用餘額 on the card face + expand chevron + 專屬權益 pill
-  if (balanceTotal !== null) {
-    return `
-      <div class="black-card static">
-        <div class="card-brand">♠</div>
-        <div class="card-logo">Girlfriend Black Card</div>
-        <div class="card-chip"></div>
-        <div class="card-nfc">${nfcSvg}</div>
-        <div class="card-balance">
-          <div class="card-balance-label">可用餘額 · 刷卡金</div>
-          <div class="card-balance-amount">
-            <span class="cb-curr">NT$</span>${balanceTotal.toLocaleString()}
-            <span class="card-balance-chevron" id="cb-chevron" onclick="toggleCashback()">${icon('expand_more')}</span>
-          </div>
-        </div>
-        <div class="card-number">${card.displayCardNumber}</div>
-        <div class="card-footer">
-          <div>
-            <div class="card-holder-label">Card Holder</div>
-            <div class="card-holder-name">${card.holderName}</div>
-          </div>
-          <div class="card-benefits-pill" onclick="navigate('benefits')">
-            ${icon('workspace_premium')} 專屬權益 ${icon('chevron_right')}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
+// ── Rose Gold Metal Card ──────────────────
+// 玫瑰金 Mastercard 樣式（示意；之後可整張替換成正式卡面設計）
+function renderBlackCard(card, size = 'full') {
+  const holder = (card.holderName || 'MEMBER').toUpperCase();
+  const ym = card.activatedAt && String(card.activatedAt).match(/\d{4}/);
+  const year = ym ? ym[0] : '2024';
   return `
-    <div class="black-card" style="${size === 'small' ? 'max-width:280px;' : ''}">
-      <div class="card-brand">♠</div>
-      <div class="card-logo">Girlfriend Black Card</div>
-      <div class="card-chip"></div>
-      <div class="card-nfc">${nfcSvg}</div>
-      <div class="card-number">${card.displayCardNumber}</div>
-      <div class="card-footer">
-        <div>
-          <div class="card-holder-label">Card Holder</div>
-          <div class="card-holder-name">${card.holderName}</div>
-        </div>
-        <div class="card-valid">
-          <div class="card-valid-label">Valid Thru</div>
-          <div class="card-valid-date">${card.validThru}</div>
-        </div>
+    <div class="black-card ${size === 'small' ? 'card-sm' : ''}">
+      <div class="mc-chip"></div>
+      <div class="mc-holder">${holder}</div>
+      <div class="mc-since">MEMBER SINCE ${year}</div>
+      <div class="mc-network">
+        <div class="mc-circles"><span class="mc-c-red"></span><span class="mc-c-yellow"></span></div>
+        <div class="mc-brand">mastercard</div>
       </div>
     </div>
   `;
 }
+
+// ── 禮物卡（夢幻包款兌換券，示意）──
+function renderGiftCard(item) {
+  const done = item.remaining <= 0;
+  return `
+    <div class="gift-card ${done ? 'done' : ''}">
+      <div class="gc-watermark">${icon('shopping_bag')}</div>
+      ${done ? `<div class="gc-stamp">${icon('check_circle')} 已兌換</div>` : ''}
+      <div class="gc-top">
+        <span class="gc-brand">GIFT CARD</span>
+        <span class="gc-mark">${icon('card_giftcard')}</span>
+      </div>
+      <div class="gc-center">
+        <div class="gc-title">夢幻包款</div>
+        <div class="gc-sub">Dream Bag · 專屬兌換券</div>
+      </div>
+      <div class="gc-bottom">
+        <span class="gc-qty">${done ? '已於兌換紀錄留存 · 感謝妳收下' : `可兌換 ${item.remaining} 個`}</span>
+        ${done ? '' : `<button class="gc-redeem" onclick="confirmUseBenefit('gift','${item.id}')">${icon('redeem')} 兌換</button>`}
+      </div>
+    </div>
+  `;
+}
+
+// 卡片輪播：更新指示點 / 點指示點捲到該卡
+window.updateCardDots = function() {
+  const t = document.getElementById('cc-track');
+  if (!t) return;
+  const i = Math.round(t.scrollLeft / t.clientWidth);
+  document.querySelectorAll('.cc-dots .cc-dot').forEach((d, k) => d.classList.toggle('active', k === i));
+};
+window.goCard = function(i) {
+  const t = document.getElementById('cc-track');
+  if (t) t.scrollTo({ left: i * t.clientWidth, behavior: 'smooth' });
+};
+
+// 支付條碼：忘記帶實體卡時，點卡片出示 QR 給男友用 admin 掃描扣款
+window.showPaySheet = function() {
+  const num = appState.card.displayCardNumber || '';
+  showModal(`
+    <div class="pay-sheet">
+      <div class="pay-title">支付條碼</div>
+      <div class="pay-sub">忘記帶卡片時，出示此條碼給熊熊掃描扣款</div>
+      <div class="pay-qr-frame">
+        <img class="pay-qr-img" src="icons/pay-qr.png" alt="支付條碼" />
+      </div>
+      <div class="pay-cardno">${num}</div>
+      <div class="pay-hint">${icon('lock')} 此條碼僅供熊熊掃描使用</div>
+      <button class="btn btn-ghost" onclick="closeModal()">關閉</button>
+    </div>
+  `);
+};
 
 // ── Modal ─────────────────────────────────
 
@@ -425,11 +436,11 @@ window.doActivate = async function() {
 function renderUnlock(el) {
   el.innerHTML = `
     <div class="unlock-screen">
-      <div class="unlock-brand">GIRLFRIEND BLACK CARD</div>
-      <button class="unlock-btn" onclick="unlockApp()">${icon('lock')}</button>
+      <div class="unlock-brand">GOOD EVENING</div>
+      <button class="unlock-btn" onclick="unlockApp()" aria-label="輕觸解鎖">${icon('lock')}</button>
       <div class="unlock-text">
         <div class="unlock-hi">Hi, ${appState.card.holderName}</div>
-        <div class="unlock-hint">輕觸解鎖妳的專屬黑卡</div>
+        <div class="unlock-hint">輕觸解鎖妳的專屬玫瑰金卡</div>
       </div>
     </div>
   `;
@@ -442,22 +453,75 @@ window.unlockApp = function() {
   setTimeout(() => navigate('app'), 280);
 };
 
+window.lockApp = function() {
+  unlocked = false;
+  navigate('unlock');
+};
+
 // ── Page: App Home ────────────────────────
+
+let balanceHidden = false;
+
+function balanceDisplay(total) {
+  return balanceHidden
+    ? '<span class="bb-cur">NT$</span> ••••••'
+    : `<span class="bb-cur">NT$</span> ${total.toLocaleString()}`;
+}
 
 function renderApp(el) {
   const recent = appState.transactions.slice(0, 3);  // server 已是最新在前
   const cashback = appState.benefits.cashback.items;
   const total = cashback.reduce((s, i) => s + i.remaining, 0);
+  const gift = findBenefitAny(appState.benefits, 'gift_bag');   // 禮物卡（夢幻包款）
   el.innerHTML = `
     <div class="app-page">
       <div class="app-header">
-        <div class="greeting-sub">GIRLFRIEND BLACK CARD</div>
-        <div class="greeting-name">Hi, ${appState.card.holderName}</div>
-        <div class="greeting-desc">妳的黑卡今天也準備好被寵愛了。</div>
+        <div class="app-header-text">
+          <div class="greeting-sub">GOOD EVENING</div>
+          <div class="greeting-name">Hi, ${appState.card.holderName}</div>
+          <div class="greeting-desc">感謝妳選擇專屬於妳的玫瑰金卡</div>
+        </div>
+        <div class="app-header-actions">
+          <a class="hdr-btn" href="tel:0917680220" aria-label="客服專線">${icon('support_agent')}</a>
+          <button class="hdr-btn" onclick="lockApp()" aria-label="鎖定並回到解鎖畫面">${icon('lock')}</button>
+        </div>
       </div>
 
-      <div class="wallet-hero">
-        ${renderBlackCard(appState.card, 'full', total)}
+      <!-- 卡片輪播（主卡 + 禮物卡），下方指示點 -->
+      <div class="card-carousel">
+        <div class="cc-track" id="cc-track" onscroll="updateCardDots()">
+          <div class="cc-slide" onclick="showPaySheet()" role="button" tabindex="0" aria-label="出示支付條碼">${renderBlackCard(appState.card)}</div>
+          ${gift ? `<div class="cc-slide">${renderGiftCard(gift.item)}</div>` : ''}
+        </div>
+        <div class="cc-dots">
+          <button class="cc-dot active" aria-label="黑卡" onclick="goCard(0)"></button>
+          ${gift ? `<button class="cc-dot" aria-label="禮物卡" onclick="goCard(1)"></button>` : ''}
+        </div>
+      </div>
+
+      <!-- 可用餘額 + 專屬權益（獨立區塊，不放卡面）-->
+      <div class="balance-wrap">
+        <div class="balance-block">
+          <div class="balance-main">
+            <div class="bb-label">可用餘額
+              <span class="eye-btn" role="button" tabindex="0" aria-label="顯示或隱藏餘額"
+                    onclick="toggleBalance()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBalance();}">${icon('visibility')}</span>
+            </div>
+            <div class="bb-amount-row">
+              <div class="bb-amount" id="balance-amount" aria-live="polite">${balanceDisplay(total)}</div>
+              <button class="bb-chev-btn" id="cb-chevron" onclick="toggleCashback()"
+                      aria-label="刷卡金明細" aria-expanded="false" aria-controls="cashback-panel">${icon('expand_more')}</button>
+            </div>
+          </div>
+          <div class="bb-divider"></div>
+          <div class="balance-actions">
+            <button class="round-action" onclick="navigate('benefits')" aria-label="查看專屬權益">
+              <span class="round-ico">${icon('workspace_premium')}</span>
+              <span class="round-lbl">專屬權益</span>
+            </button>
+          </div>
+        </div>
+
         <div class="cashback-panel" id="cashback-panel">
           <div class="cashback-inner">
             <div class="cashback-head">各項刷卡金餘額</div>
@@ -472,25 +536,134 @@ function renderApp(el) {
         </div>
       </div>
 
-      <div>
-        <div class="section-header">
+      <!-- 經常兌換（女友可自訂的首頁快捷）-->
+      <div class="card fav-card">
+        <div class="section-header txn-card-head">
+          <div class="section-title">經常兌換</div>
+          <button class="fav-edit-btn" onclick="openFavEditor()" aria-label="編輯經常兌換">${icon('tune')} 編輯</button>
+        </div>
+        ${renderFavRow()}
+      </div>
+
+      <div class="card">
+        <div class="section-header txn-card-head">
           <div class="section-title">最近交易</div>
-          <div class="section-more" onclick="navigate('transactions')">查看全部</div>
+          <div class="section-more" onclick="navigate('transactions')">查看全部 ${icon('chevron_right')}</div>
         </div>
-        <div class="card">
-          ${recent.map(renderTransactionItem).join('')}
-          ${recent.length === 0 ? '<p style="color:var(--text-dim);font-size:14px;text-align:center;padding:16px 0;">尚無交易紀錄</p>' : ''}
-        </div>
+        ${recent.map(renderTransactionItem).join('')}
+        ${recent.length === 0 ? '<p style="color:var(--text-dim);font-size:14px;text-align:center;padding:16px 0;">尚無交易紀錄</p>' : ''}
       </div>
     </div>
   `;
 }
 
+window.toggleBalance = function() {
+  balanceHidden = !balanceHidden;
+  const total = appState.benefits.cashback.items.reduce((s, i) => s + i.remaining, 0);
+  const amt = document.getElementById('balance-amount');
+  if (amt) amt.innerHTML = balanceDisplay(total);
+  const eye = document.querySelector('.eye-btn .material-symbols-outlined');
+  if (eye) eye.textContent = balanceHidden ? 'visibility_off' : 'visibility';
+};
+
 window.toggleCashback = function() {
   const p = document.getElementById('cashback-panel');
   const c = document.getElementById('cb-chevron');
+  const open = p ? !p.classList.contains('open') : false;
   if (p) p.classList.toggle('open');
-  if (c) c.classList.toggle('open');
+  if (c) { c.classList.toggle('open', open); c.setAttribute('aria-expanded', String(open)); }
+};
+
+// ── 經常兌換區塊 ──
+function renderFavRow() {
+  const favs = favoriteList(appState.benefits);
+  if (!favs.length) {
+    return `<div class="fav-empty">尚未設定，點右上「編輯」加入常用兌換</div>`;
+  }
+  return `
+    <div class="fav-row">
+      ${favs.map(f => `
+        <button class="fav-item ${f.item.remaining <= 0 ? 'used' : ''}"
+                onclick="confirmUseBenefit('${f.key}','${f.item.id}')" aria-label="兌換 ${f.item.title}">
+          <span class="fav-ico">${icon(f.item.icon)}</span>
+          <span class="fav-lbl">${f.item.title}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+// ── 經常兌換編輯（bottom sheet）──
+let favEdit = [];
+
+window.openFavEditor = function() {
+  favEdit = favoriteList(appState.benefits).map(f => f.item.id);
+  showModal(renderFavEditor());
+};
+
+function renderFavEditor() {
+  const selected = favEdit.map(id => findBenefitAny(appState.benefits, id)).filter(Boolean);
+  const available = favoritableItems(appState.benefits).filter(x => !favEdit.includes(x.item.id));
+  return `
+    <div class="modal-title">編輯經常兌換</div>
+    <div class="modal-desc">最多 5 個；由上到下＝首頁由左到右。</div>
+    <div class="fav-edit">
+      <div class="fav-edit-sec">已加入（${selected.length}/5）</div>
+      ${selected.length ? selected.map((x, i) => `
+        <div class="fav-edit-row">
+          <span class="fav-edit-ico">${icon(x.item.icon)}</span>
+          <span class="fav-edit-name">${x.item.title}</span>
+          <span class="fav-edit-ctrls">
+            <button class="fav-mini" ${i === 0 ? 'disabled' : ''} onclick="favMove('${x.item.id}',-1)" aria-label="上移">${icon('keyboard_arrow_up')}</button>
+            <button class="fav-mini" ${i === selected.length - 1 ? 'disabled' : ''} onclick="favMove('${x.item.id}',1)" aria-label="下移">${icon('keyboard_arrow_down')}</button>
+            <button class="fav-mini remove" onclick="favRemove('${x.item.id}')" aria-label="移除">${icon('close')}</button>
+          </span>
+        </div>
+      `).join('') : `<div class="fav-empty" style="padding:12px 0;">尚未加入任何項目</div>`}
+
+      <div class="fav-edit-sec">可加入</div>
+      ${available.length ? available.map(x => `
+        <div class="fav-edit-row">
+          <span class="fav-edit-ico">${icon(x.item.icon)}</span>
+          <span class="fav-edit-name">${x.item.title}</span>
+          <button class="fav-mini add" ${favEdit.length >= 5 ? 'disabled' : ''} onclick="favAdd('${x.item.id}')" aria-label="加入">${icon('add')}</button>
+        </div>
+      `).join('') : `<div class="fav-empty" style="padding:12px 0;">已全部加入</div>`}
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="runWithLoading(this, () => saveFavorites())">儲存</button>
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    </div>
+  `;
+}
+
+function refreshFavEditor() {
+  const box = document.getElementById('modal-box');
+  if (box) box.innerHTML = `<div class="modal-handle"></div>` + renderFavEditor();
+}
+
+window.favAdd = function(id) {
+  if (favEdit.length >= 5 || favEdit.includes(id)) return;
+  favEdit.push(id);
+  refreshFavEditor();
+};
+window.favRemove = function(id) {
+  favEdit = favEdit.filter(x => x !== id);
+  refreshFavEditor();
+};
+window.favMove = function(id, dir) {
+  const i = favEdit.indexOf(id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= favEdit.length) return;
+  [favEdit[i], favEdit[j]] = [favEdit[j], favEdit[i]];
+  refreshFavEditor();
+};
+window.saveFavorites = async function() {
+  const st = await apiCall({ action: 'setFavorites', ids: favEdit });
+  if (!applyServerState(st)) { showToast((st && st.error) || '儲存失敗，請檢查連線', 'error'); return; }
+  closeModal();
+  showToast('已更新經常兌換', 'success');
+  handleRoute();
 };
 
 // ── Page: Products ────────────────────────
@@ -701,25 +874,42 @@ function showPinScreen(item) {
   container.appendChild(div);
   div.innerHTML = `
     <div class="pin-screen">
-      <div class="back-btn" onclick="cancelPin()">${icon('chevron_left')} 取消</div>
-      <div class="pin-head">
-        <div class="pin-lock-circle">${icon('lock')}</div>
-        <div class="pin-title">請輸入支付密碼</div>
-        <div class="pin-sub">輸入 4 位數密碼以兌換「${item.title}」</div>
+      <div class="pin-top">
+        <button class="back-btn" onclick="cancelPin()">${icon('chevron_left')} 取消</button>
       </div>
-      <input id="pin-input" class="pin-field" type="tel" inputmode="numeric"
-             maxlength="4" autocomplete="off" oninput="onPinInput()" />
-      <div class="pin-err" id="pin-err"></div>
+      <div class="pin-body">
+        <div class="pin-head">
+          <div class="pin-lock-circle">${icon('lock')}</div>
+          <div class="pin-title">請輸入支付密碼</div>
+          <div class="pin-sub">輸入 4 位數密碼以兌換「${item.title}」</div>
+        </div>
+        <div class="pin-dots" id="pin-dots" onclick="focusPin()">
+          <span class="pin-dot"></span>
+          <span class="pin-dot"></span>
+          <span class="pin-dot"></span>
+          <span class="pin-dot"></span>
+          <input id="pin-input" class="pin-hidden" type="tel" inputmode="numeric"
+                 maxlength="4" autocomplete="off" oninput="onPinInput()" />
+        </div>
+        <div class="pin-err" id="pin-err"></div>
+      </div>
       <div class="pin-hint">${icon('info')} 輸入正確密碼後進入感應畫面</div>
     </div>
   `;
   setTimeout(() => { const i = document.getElementById('pin-input'); if (i) i.focus(); }, 60);
 }
 
+window.focusPin = function() {
+  const i = document.getElementById('pin-input');
+  if (i) i.focus();
+};
+
 window.onPinInput = function() {
   const inp = document.getElementById('pin-input');
   const val = (inp.value || '').replace(/\D/g, '').slice(0, 4);
   inp.value = val;
+  const dots = document.querySelectorAll('#pin-dots .pin-dot');
+  dots.forEach((d, i) => d.classList.toggle('filled', i < val.length));
   const err = document.getElementById('pin-err');
   if (err) err.textContent = '';
   if (val.length === 4) {
@@ -728,9 +918,15 @@ window.onPinInput = function() {
       const t = pinTarget; pinTarget = null;
       showRedeemTap(t.key, t.id);
     } else {
-      inp.classList.add('shake');
+      const wrap = document.getElementById('pin-dots');
+      if (wrap) wrap.classList.add('shake');
       if (err) err.textContent = '密碼錯誤，請再試一次';
-      setTimeout(() => { inp.value = ''; inp.classList.remove('shake'); inp.focus(); }, 500);
+      setTimeout(() => {
+        inp.value = '';
+        dots.forEach(d => d.classList.remove('filled'));
+        if (wrap) wrap.classList.remove('shake');
+        inp.focus();
+      }, 500);
     }
   }
 };
@@ -771,8 +967,8 @@ async function showRedeemTap(key, id) {
       </div>
       <div class="tap-hint">感應卡片後，開啟的頁面會自動完成兌換</div>
       <div class="tap-actions">
-        <button class="btn btn-primary" onclick="finishRedeem()">${icon('check_circle')} 我已完成感應</button>
-        <button class="btn btn-ghost" onclick="cancelRedeem()">取消</button>
+        <button class="btn btn-primary" onclick="runWithLoading(this, () => finishRedeem())">${icon('check_circle')} 我已完成感應</button>
+        <button class="btn btn-ghost" onclick="runWithLoading(this, () => cancelRedeem())">取消</button>
       </div>
     </div>
   `;
