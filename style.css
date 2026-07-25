@@ -1601,8 +1601,9 @@ select.input-field { appearance: none; -webkit-appearance: none; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 26px;
+  justify-content: flex-start;   /* 內容靠上，避免鍵盤叫起後遮住密碼點 */
+  padding-top: min(9vh, 64px);
+  gap: 24px;
   text-align: center;
 }
 .pin-head { display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -1930,3 +1931,30 @@ select.input-field { appearance: none; -webkit-appearance: none; }
   text-shadow: 0 1px 3px rgba(0,0,0,0.8);
   letter-spacing: 0.02em;
 }
+
+/* ── 下拉重新載入指示器 ── */
+#ptr-indicator {
+  position: absolute;
+  top: var(--safe-top);
+  left: 50%;
+  transform: translate(-50%, -44px);
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+.ptr-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(213,161,139,0.28);
+  border-top-color: var(--gold-light);
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+#ptr-indicator.ready .ptr-spinner { border-top-color: var(--gold); transform: rotate(180deg); }
+#ptr-indicator.spin .ptr-spinner { animation: ptrSpin 0.7s linear infinite; }
+@keyframes ptrSpin { to { transform: rotate(360deg); } }

@@ -184,7 +184,69 @@ window.addEventListener('DOMContentLoaded', () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
+
+  setupPullToRefresh();
 });
+
+// ── 下拉重新載入（首頁等主頁面）──────────────
+function setupPullToRefresh() {
+  const sc = document.getElementById('page-container');
+  const shell = document.getElementById('app-shell');
+  if (!sc || !shell) return;
+
+  const ind = document.createElement('div');
+  ind.id = 'ptr-indicator';
+  ind.innerHTML = '<span class="ptr-spinner"></span>';
+  shell.appendChild(ind);
+
+  const THRESH = 68;
+  let startY = 0, pulling = false, dist = 0, refreshing = false;
+
+  const canPull = () => {
+    if (refreshing) return false;
+    if (!holderNavPages.includes(currentRoute())) return false;       // 只在主頁面
+    if (!document.getElementById('modal-overlay').classList.contains('hidden')) return false;  // 有彈窗時不觸發
+    return sc.scrollTop <= 0;
+  };
+
+  sc.addEventListener('touchstart', (e) => {
+    if (!canPull()) { pulling = false; return; }
+    startY = e.touches[0].clientY; pulling = true; dist = 0;
+  }, { passive: true });
+
+  sc.addEventListener('touchmove', (e) => {
+    if (!pulling || refreshing) return;
+    dist = e.touches[0].clientY - startY;
+    if (dist > 0 && sc.scrollTop <= 0) {
+      if (e.cancelable) e.preventDefault();       // 接手下拉，顯示指示器
+      const pull = Math.min(dist * 0.5, 88);
+      ind.style.transform = `translate(-50%, ${Math.min(pull, 60)}px)`;
+      ind.style.opacity = Math.min(pull / THRESH, 1);
+      ind.classList.toggle('ready', pull >= THRESH * 0.7);
+    }
+  }, { passive: false });
+
+  sc.addEventListener('touchend', async () => {
+    if (!pulling) return;
+    pulling = false;
+    const pull = Math.min(dist * 0.5, 88);
+    dist = 0;
+    if (pull >= THRESH * 0.7) {
+      refreshing = true;
+      ind.classList.remove('ready');
+      ind.classList.add('spin');
+      ind.style.transform = 'translate(-50%, 52px)';
+      ind.style.opacity = '1';
+      await refreshFromServer(false);
+      handleRoute();
+      ind.classList.remove('spin');
+      refreshing = false;
+    }
+    ind.style.transform = '';
+    ind.style.opacity = '';
+    ind.classList.remove('ready');
+  });
+}
 
 // ── Bottom Nav ────────────────────────────
 
@@ -258,6 +320,20 @@ window.goCard = function(i) {
 };
 
 // 支付條碼：忘記帶實體卡時，點卡片出示 QR 給男友用 admin 掃描扣款
+// 出示期間持續查 server：男友掃描/感應完成扣款（多一筆交易）→ 自動關閉並跳到交易紀錄
+let payPoll = null;
+let payVis = null;
+
+function txSig(st) {
+  const t = (st && st.transactions) || [];
+  return t.length + '|' + JSON.stringify(t[0] || {});
+}
+
+function stopPayPoll() {
+  if (payPoll) { clearInterval(payPoll); payPoll = null; }
+  if (payVis) { document.removeEventListener('visibilitychange', payVis); payVis = null; }
+}
+
 window.showPaySheet = function() {
   const num = appState.card.displayCardNumber || '';
   showModal(`
@@ -272,6 +348,27 @@ window.showPaySheet = function() {
       <button class="btn btn-ghost" onclick="closeModal()">關閉</button>
     </div>
   `);
+
+  stopPayPoll();
+  let base = null;   // 第一次查詢當基準，之後有變化才視為完成扣款
+  const check = async () => {
+    if (document.getElementById('modal-overlay').classList.contains('hidden')) { stopPayPoll(); return; }
+    const st = await apiFetchState();
+    if (!st || !st.ok) return;
+    const sig = txSig(st);
+    if (base === null) { base = sig; applyServerState(st); return; }
+    if (sig !== base) {
+      stopPayPoll();
+      applyServerState(st);
+      closeModal();
+      showToast('已完成扣款', 'success');
+      navigate('transactions');
+    }
+  };
+  payPoll = setInterval(check, 1500);
+  payVis = () => { if (document.visibilityState === 'visible') check(); };
+  document.addEventListener('visibilitychange', payVis);
+  check();   // 立即抓一次當基準
 };
 
 // ── Modal ─────────────────────────────────
@@ -286,6 +383,7 @@ function showModal(html, onClose) {
 }
 
 function closeModal() {
+  stopPayPoll();   // 關閉支付條碼時停止輪詢
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 
@@ -849,6 +947,7 @@ function findBenefit(key, id) {
 let pinTarget = null;
 let redeemBusy = false;
 let redeemPoll = null;          // 感應畫面定時查詢是否已完成
+let redeemVis = null;           // 回到 App 時立即查一次的 visibility handler
 
 // 女友開卡時自己設定的交易密碼（存在 Card sheet，隨 state 回傳）
 function cardPin() {
@@ -896,7 +995,10 @@ function showPinScreen(item) {
       <div class="pin-hint">${icon('info')} 輸入正確密碼後進入感應畫面</div>
     </div>
   `;
-  setTimeout(() => { const i = document.getElementById('pin-input'); if (i) i.focus(); }, 60);
+  // 同步 focus：保留在點擊手勢內，iOS 才會自動叫起鍵盤；再補一次以防未繪製完成
+  const inp0 = document.getElementById('pin-input');
+  if (inp0) inp0.focus();
+  setTimeout(() => { const i = document.getElementById('pin-input'); if (i) i.focus(); }, 80);
 }
 
 window.focusPin = function() {
@@ -979,22 +1081,31 @@ async function showRedeemTap(key, id) {
 }
 
 // 定時查詢 server：當 pending 被感應端結算掉 → 自動到交易紀錄
-function startRedeemPoll() {
+// 另外監聽 visibilitychange：從 NFC 開啟的新分頁切回 App 時立即查一次，不用等輪詢
+function stopRedeemPoll() {
   clearInterval(redeemPoll);
-  redeemPoll = setInterval(async () => {
-    if (!document.querySelector('.tap-screen')) { clearInterval(redeemPoll); return; }
+  if (redeemVis) { document.removeEventListener('visibilitychange', redeemVis); redeemVis = null; }
+}
+
+function startRedeemPoll() {
+  stopRedeemPoll();
+  const check = async () => {
+    if (!document.querySelector('.tap-screen')) { stopRedeemPoll(); return; }
     const st = await apiFetchState();
     if (st && st.ok && !st.pending) {        // 待處理已被結算
-      clearInterval(redeemPoll);
+      stopRedeemPoll();
       applyServerState(st);
       showToast('兌換完成', 'success');
       navigate('transactions');
     }
-  }, 2500);
+  };
+  redeemPoll = setInterval(check, 1200);
+  redeemVis = () => { if (document.visibilityState === 'visible') check(); };
+  document.addEventListener('visibilitychange', redeemVis);
 }
 
 window.cancelRedeem = async function() {
-  clearInterval(redeemPoll);
+  stopRedeemPoll();
   await apiCall({ action: 'clearPending' });
   handleRoute();   // hash 已是 products，重繪回兌換頁
 };
@@ -1002,7 +1113,7 @@ window.cancelRedeem = async function() {
 window.finishRedeem = async function() {
   if (redeemBusy) return;
   redeemBusy = true;
-  clearInterval(redeemPoll);
+  stopRedeemPoll();
   const st = await apiCall({ action: 'commitPending' });
   redeemBusy = false;
   applyServerState(st);

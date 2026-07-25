@@ -2,7 +2,7 @@
    Network-first so deploys/edits show immediately when online,
    with cache fallback for offline use. */
 
-const CACHE_NAME = 'gfc-v3';
+const CACHE_NAME = 'gfc-v4';
 const ASSETS = [
   './index.html',
   './admin.html',
