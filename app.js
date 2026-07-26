@@ -433,23 +433,13 @@ function renderWelcome(el) {
 // ── Page: Tap ─────────────────────────────
 
 function renderTap(el) {
+  // App 啟動載入畫面（splash）：品牌字樣 + 乾淨的載入動畫，不需要 NFC 感應圖示/字樣
   el.innerHTML = `
     <div class="tap-page">
-      <div>
-        <p style="font-size:11px;letter-spacing:0.2em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:12px;text-align:center;">NFC Reading</p>
-        <h2 style="font-size:22px;font-weight:700;text-align:center;letter-spacing:-0.02em;">正在讀取<br/>Girlfriend Black Card</h2>
-        <p style="font-size:13px;color:var(--text-secondary);text-align:center;margin-top:10px;">請稍候，正在確認卡片狀態</p>
-      </div>
-
-      <div class="tap-nfc-anim">
-        <div class="tap-nfc-ring"></div>
-        <div class="tap-nfc-ring"></div>
-        <div class="tap-nfc-ring"></div>
-        <div class="tap-card-icon">${icon('contactless')}</div>
-      </div>
-
-      <div class="loading-dots">
-        <span></span><span></span><span></span>
+      <div class="splash">
+        <div class="splash-eyebrow">J BANK</div>
+        <div class="splash-title">專屬黑卡</div>
+        <div class="splash-spinner"></div>
       </div>
     </div>
   `;
@@ -525,14 +515,23 @@ window.doActivate = async function() {
 
 // ── Page: Unlock（每次開啟先解鎖，像銀行 App）──
 
+// 依當下時間顯示問候語
+function greetingText() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11)  return 'GOOD MORNING';
+  if (h >= 11 && h < 17) return 'GOOD AFTERNOON';
+  if (h >= 17 && h < 22) return 'GOOD EVENING';
+  return 'GOOD NIGHT';
+}
+
 function renderUnlock(el) {
   el.innerHTML = `
     <div class="unlock-screen">
-      <div class="unlock-brand">GOOD EVENING</div>
+      <div class="unlock-brand">${greetingText()}</div>
       <button class="unlock-btn" onclick="unlockApp()" aria-label="輕觸解鎖">${icon('lock')}</button>
       <div class="unlock-text">
         <div class="unlock-hi">Hi, ${appState.card.holderName}</div>
-        <div class="unlock-hint">輕觸解鎖妳的專屬玫瑰金卡</div>
+        <div class="unlock-hint">輕觸解鎖妳的專屬黑卡</div>
       </div>
     </div>
   `;
@@ -569,9 +568,9 @@ function renderApp(el) {
     <div class="app-page">
       <div class="app-header">
         <div class="app-header-text">
-          <div class="greeting-sub">GOOD EVENING</div>
+          <div class="greeting-sub">${greetingText()}</div>
           <div class="greeting-name">Hi, ${appState.card.holderName}</div>
-          <div class="greeting-desc">感謝妳選擇專屬於妳的玫瑰金卡</div>
+          <div class="greeting-desc">感謝妳選擇專屬於妳的專屬黑卡</div>
         </div>
         <div class="app-header-actions">
           <a class="hdr-btn" href="tel:0917680220" aria-label="客服專線">${icon('support_agent')}</a>
@@ -1107,16 +1106,22 @@ async function showRedeemTap(key, id) {
 
 // 定時查詢 server：當 pending 被感應端結算掉 → 自動到交易紀錄
 // 另外監聽 visibilitychange：從 NFC 開啟的新分頁切回 App 時立即查一次，不用等輪詢
+// redeemActive：取消/完成時立刻設 false，避免「取消時剛好把 pending 清掉」被 in-flight 查詢誤判成兌換完成
+let redeemActive = false;
+
 function stopRedeemPoll() {
+  redeemActive = false;
   clearInterval(redeemPoll);
   if (redeemVis) { document.removeEventListener('visibilitychange', redeemVis); redeemVis = null; }
 }
 
 function startRedeemPoll() {
   stopRedeemPoll();
+  redeemActive = true;
   const check = async () => {
-    if (!document.querySelector('.tap-screen')) { stopRedeemPoll(); return; }
+    if (!redeemActive || !document.querySelector('.tap-screen')) { stopRedeemPoll(); return; }
     const st = await apiFetchState();
+    if (!redeemActive || !document.querySelector('.tap-screen')) return;   // 取消後 in-flight 查詢直接作廢
     if (st && st.ok && !st.pending) {        // 待處理已被結算
       stopRedeemPoll();
       applyServerState(st);
@@ -1130,7 +1135,7 @@ function startRedeemPoll() {
 }
 
 window.cancelRedeem = async function() {
-  stopRedeemPoll();
+  stopRedeemPoll();               // 先停止輪詢（redeemActive=false）
   await apiCall({ action: 'clearPending' });
   handleRoute();   // hash 已是 products，重繪回兌換頁
 };

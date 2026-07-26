@@ -527,6 +527,25 @@ select.input-field { appearance: none; -webkit-appearance: none; }
   gap: 36px;
 }
 
+/* App 啟動 splash */
+.splash { display: flex; flex-direction: column; align-items: center; gap: 26px; }
+.splash-eyebrow {
+  font-size: 11px; letter-spacing: 0.34em; text-transform: uppercase;
+  color: var(--gold-dim);
+}
+.splash-title {
+  font-size: 27px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--text-primary);
+  margin-top: -14px;
+}
+.splash-spinner {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 3px solid rgba(213,161,139,0.2);
+  border-top-color: var(--gold-light);
+  animation: ptrSpin 0.8s linear infinite;
+  margin-top: 6px;
+}
+
 .tap-nfc-anim {
   position: relative;
   width: 100px;

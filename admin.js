@@ -152,19 +152,13 @@ function renderBottomNav(el, active) {
 
 // ── Shared Components ─────────────────────
 
+// 與前台一致：使用 card/ 內女友目前選的卡面圖，程式僅保留持卡人姓名
 function renderBlackCard(card, size = 'full') {
   const holder = (card.holderName || 'MEMBER').toUpperCase();
-  const ym = card.activatedAt && String(card.activatedAt).match(/\d{4}/);
-  const year = ym ? ym[0] : '2024';
+  const face = cardFaceId(card);
   return `
-    <div class="black-card ${size === 'small' ? 'card-sm' : ''}">
-      <div class="mc-chip"></div>
+    <div class="black-card faced ${size === 'small' ? 'card-sm' : ''}" style="background-image:url('card/${face}.png')">
       <div class="mc-holder">${holder}</div>
-      <div class="mc-since">MEMBER SINCE ${year}</div>
-      <div class="mc-network">
-        <div class="mc-circles"><span class="mc-c-red"></span><span class="mc-c-yellow"></span></div>
-        <div class="mc-brand">mastercard</div>
-      </div>
     </div>
   `;
 }
@@ -568,22 +562,32 @@ async function showChargeTap(pool, amount, note) {
   startChargePoll();   // 她感應她那端完成後，這邊自動跳交易紀錄
 }
 
-function startChargePoll() {
+// chargeActive：取消/完成時立刻設 false，避免「取消時剛好把 pending 清掉」被 in-flight 查詢誤判成扣款完成
+let chargeActive = false;
+
+function stopChargePoll() {
+  chargeActive = false;
   clearInterval(chargePoll);
+}
+
+function startChargePoll() {
+  stopChargePoll();
+  chargeActive = true;
   chargePoll = setInterval(async () => {
-    if (!document.querySelector('.tap-screen')) { clearInterval(chargePoll); return; }
+    if (!chargeActive || !document.querySelector('.tap-screen')) { stopChargePoll(); return; }
     const st = await apiFetchState();
+    if (!chargeActive || !document.querySelector('.tap-screen')) return;   // 取消後 in-flight 查詢直接作廢
     if (st && st.ok && !st.pending) {
-      clearInterval(chargePoll);
+      stopChargePoll();
       applyServerState(st);
       showToast('扣款完成', 'success');
       navigate('admin-transactions');
     }
-  }, 2500);
+  }, 1500);
 }
 
 window.cancelCharge = async function() {
-  clearInterval(chargePoll);
+  stopChargePoll();               // 先停止輪詢（chargeActive=false）
   await apiCall({ action: 'clearPending' });
   handleRoute();   // hash 已是 admin-cashback，重繪回該頁
 };
@@ -591,7 +595,7 @@ window.cancelCharge = async function() {
 window.finishCharge = async function() {
   if (chargeBusy) return;
   chargeBusy = true;
-  clearInterval(chargePoll);
+  stopChargePoll();
   const st = await apiCall({ action: 'commitPending' });
   chargeBusy = false;
   applyServerState(st);
