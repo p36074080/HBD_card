@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Private Account Activation</title>
+  <meta name="description" content="An exclusive private banking experience created for one person." />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0B0B0C" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- Open Graph（低調，不含私人資訊）-->
+  <meta property="og:title" content="Private Account Activation" />
+  <meta property="og:description" content="An exclusive private banking experience created for one person." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="icons/icon-j-512.png" />
+
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-j-512.png" />
+  <link rel="apple-touch-icon" href="icons/icon-j-180.png" />
+  <link rel="stylesheet" href="birthday.css" />
+</head>
+<body class="pb-lock">
+
+  <!-- 音效開關（低調，載入主內容後才出現）-->
+  <button class="pb-sound" id="pb-sound" aria-label="開啟音效"></button>
+
+  <!-- ═══ 開場 Overlay：Section 01 驗證 + Section 02 帳戶啟用 ═══ -->
+  <div id="pb-overlay">
+    <button class="pb-skip" type="button">略過動畫 ›</button>
+
+    <!-- Section 01a：驗證中 -->
+    <div class="pb-stage" id="pb-stage-verify">
+      <div class="pb-verify-title">PRIVATE CLIENT ACCESS</div>
+      <div class="pb-verify-sub">Verifying account credentials…</div>
+      <div class="pb-progress" aria-hidden="true"></div>
+      <div class="pb-pct" id="pb-pct">0%</div>
+    </div>
+
+    <!-- Section 01b：驗證通過 -->
+    <div class="pb-stage" id="pb-stage-verified">
+      <div class="pb-verified-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <div class="pb-verify-title">IDENTITY VERIFIED</div>
+      <div class="pb-verify-sub">Exclusive access granted.</div>
+    </div>
+
+    <!-- Section 02：帳戶啟用 -->
+    <div class="pb-stage" id="pb-stage-intro">
+      <div class="pb-seq" id="pb-intro-seq">
+        <div class="pb-intro-line">A PRIVATE ACCOUNT<br>HAS BEEN CREATED</div>
+        <div class="pb-eyebrow" style="margin-top:6px;">EXCLUSIVELY FOR</div>
+        <div class="pb-intro-name" id="pb-intro-name">—</div>
+        <div class="pb-kv"><span class="k">Account No.</span><span class="v" id="pb-intro-acc">000001</span></div>
+        <div class="pb-kv"><span class="k">Client Status</span><span class="v" id="pb-intro-status">FOUNDING MEMBER</span></div>
+        <hr class="pb-hairline" style="width:120px;margin:6px auto;">
+        <div class="pb-intro-activated">PRIVATE ACCOUNT ACTIVATED</div>
+        <div class="pb-intro-activated-cn">妳的專屬私人帳戶，已正式啟用。</div>
+        <div style="width:min(320px,80vw);margin-top:12px;">
+          <button class="pb-btn" id="pb-enter"><span>進入私人銀行</span><span class="sub">ENTER PRIVATE BANKING</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 主內容（JS 由 PRIVATE_BANK 產生）═══ -->
+  <main id="pb-main"></main>
+
+  <!-- 圖片放大 Lightbox -->
+  <div id="pb-lightbox" aria-hidden="true">
+    <button class="close" aria-label="關閉">×</button>
+    <img alt="" />
+  </div>
+
+  <script src="birthday-data.js"></script>
+  <script>
+    // 把資料檔中的名字/帳號帶進開場動畫（其餘由 birthday.js 產生）
+    (function () {
+      try {
+        var d = window.PRIVATE_BANK || {};
+        var n = document.getElementById('pb-intro-name'); if (n) n.textContent = d.girlfriendFirstName || '';
+        var a = document.getElementById('pb-intro-acc'); if (a) a.textContent = d.accountNumber || '';
+        var s = document.getElementById('pb-intro-status'); if (s) s.textContent = d.clientStatus || '';
+      } catch (e) {}
+    })();
+  </script>
+  <script src="birthday.js"></script>
+</body>
+</html>
