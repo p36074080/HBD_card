@@ -15,7 +15,7 @@ const mockCard = {
   monthlyLimit: 13140,
   activatedAt: "2026-06-15",
   validThru: "FOREVER",
-  face: "c01"
+  face: "c00"
 };
 
 const PRAISES = [
@@ -502,7 +502,7 @@ window.doActivate = async function() {
   if (pin.length !== 4) { showToast('請設定 4 位數字交易密碼', 'error'); return; }
   const btn = document.querySelector('.activate-page .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = '開通中…'; }
-  const st = await apiCall({ action: 'activate', holderName: name, pin });
+  const st = await apiCall({ action: 'activate', holderName: name, pin, face: DEFAULT_FACE });
   if (applyServerState(st)) {
     unlocked = true;   // 剛開卡完直接視為已解鎖
     appState.lastAction = { type: 'activate', holderName: appState.card.holderName };

@@ -96,11 +96,12 @@ function favoriteList(benefits) {
 }
 
 // ── 卡面樣式（女友可自選）────────────────
-// 圖檔放在 card/ 資料夾：c01.png ~ c09.png；Card sheet 用 face 欄位記錄目前選擇
-const CARD_FACES = ['c01', 'c02', 'c03', 'c04', 'c05', 'c06', 'c07', 'c08', 'c09'];
+// 圖檔放在 card/ 資料夾：c00.png ~ c09.png；Card sheet 用 face 欄位記錄目前選擇
+const CARD_FACES = ['c00', 'c01', 'c02', 'c03', 'c04', 'c05', 'c06', 'c07', 'c08', 'c09'];
+const DEFAULT_FACE = 'c00';                          // 初始化 / 開卡預設卡面
 function cardFaceId(card) {
   const f = card && card.face;
-  return CARD_FACES.indexOf(f) >= 0 ? f : 'c01';   // 預設 c01
+  return CARD_FACES.indexOf(f) >= 0 ? f : DEFAULT_FACE;   // 預設 c00
 }
 
 // ── Material Symbols helper ───────────────
