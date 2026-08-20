@@ -54,42 +54,43 @@ const PRIVATE_BANK = {
       date: "2015.04.11",
       title: "第一次一起過夜",
       description: "那一晚之後，有些東西悄悄地不一樣了。這個帳戶，記下了第一筆存入。",
-      image: "images/milestone-01.jpg"
+      image: "images/2015.04.11.JPG"
     },
     {
       type: "ACCOUNT ESTABLISHED",
       date: "2015.05.20",
       title: "正式交往的那一天",
       description: "我們決定不再只是曖昧。從這一天起，帳戶正式以「我們」的名義開立。",
-      image: "images/milestone-02.jpg"
+      image: "images/2015.05.20.JPG"
     },
     {
       type: "FIRST SHARED ASSET",
       date: "2016.08.30",
       title: "第一次一起去海邊",
       description: "第一次帶著妳去看海。原來一起看同一片海，本身就是一種資產。",
-      image: "images/milestone-03.jpg"
+      image: "images/2016.08.30.JPG"
     },
     {
       type: "ACCOUNTS MERGED",
       date: "2023.02.16",
       title: "開始一起生活",
       description: "把兩個人的日子併進同一個屋簷下。從這天起，帳戶不再分你我。",
-      image: "images/milestone-04.jpg"
+      image: "images/2023.02.16.jpg"
     },
     {
       type: "FIRST OVERSEAS HOLDING",
       date: "2023.08.03",
       title: "第一次一起出國旅行",
       description: "第一次牽著妳的手走過另一個國家。我們的版圖，又擴大了一點。",
-      image: "images/milestone-05.jpg"
+      image: "images/2023.08.03.jpg"
     },
     {
       type: "30TH BIRTHDAY · SPECIAL ISSUE",
       date: "2026.08.23",
       title: "三十歲生日特別發行",
       description: "今天，妳正式成為本行唯一的創始會員。這張卡為妳的三十歲特別發行，也是下一個階段的開始。",
-      image: "images/metal-card.jpg"
+      // 翻卡：正面微浮動，點一下看背面，3 秒後自動翻回正面
+      flip: { front: "images/PB_card_正面.png", back: "images/PB_card_反面.png" }
     }
   ],
   nextMilestone: {
@@ -121,7 +122,7 @@ const PRIVATE_BANK = {
       "妳的私人帳戶已經建立完成。",
       "接下來，還有一項專屬權限等待啟用。"
     ],
-    cardImage: "card/c01.png"          // NFC 信用卡示意圖（沿用專案卡面）
+    cardImage: "card/c00.png"          // NFC 信用卡示意圖（沿用專案卡面）
   },
 
   // ── SECTION 08：NFC 感應開卡指引 ──

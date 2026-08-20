@@ -28,8 +28,19 @@
       <span class="ph-mono">${esc(D.monogram)}</span>
       ${label ? `<span class="ph-label">${esc(label)}</span>` : ''}
       <img alt="" loading="lazy" src="${esc(src)}"
-           onload="this.classList.add('loaded')"
+           onload="this.classList.add('loaded');this.parentNode&&this.parentNode.classList.add('has-img')"
            onerror="this.remove();this.parentNode&&this.parentNode.removeAttribute('data-full')">
+    </div>`;
+
+  // 翻卡：正面微浮動，點一下翻到背面，3 秒後自動翻回正面
+  const flipCard = (fc) => `
+    <div class="pb-flip" tabindex="0" role="button" aria-label="點一下查看卡片背面" onclick="pbFlip(this)"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pbFlip(this);}">
+      <div class="pb-flip-inner">
+        <div class="pb-flip-face pb-flip-front"><img src="${esc(fc.front)}" alt="卡片正面" loading="lazy"></div>
+        <div class="pb-flip-face pb-flip-back"><img src="${esc(fc.back)}" alt="卡片背面" loading="lazy"></div>
+      </div>
+      <div class="pb-flip-hint"><span class="pb-flip-dot"></span>點一下看背面</div>
     </div>`;
 
   /* ═══════════ 建構主內容（Section 03–09 + footer）═══════════ */
@@ -37,9 +48,11 @@
     const w = D.welcome, l = D.letter, p = D.portfolio, pv = D.privilege, f = D.final;
 
     const milestonesHtml = D.milestones.map((m) => {
-      const media = m.images && m.images.length
-        ? `<div class="pb-gallery">${m.images.map((src, i) => photo(src, 'Memory 0' + (i + 1))).join('')}</div>`
-        : (m.image ? photo(m.image, m.type) : '');
+      const media = m.flip
+        ? flipCard(m.flip)
+        : m.images && m.images.length
+          ? `<div class="pb-gallery">${m.images.map((src, i) => photo(src, 'Memory 0' + (i + 1))).join('')}</div>`
+          : (m.image ? photo(m.image, m.type) : '');
       return `
         <div class="pb-node reveal">
           <div class="pb-node-type">${esc(m.type)}</div>
@@ -183,7 +196,7 @@
               <span class="ttd-logo"><img src="icons/icon-j-512.png" alt="" width="42" height="42" /></span>
             </div>
             <div class="ttd-waves"><span></span><span></span><span></span></div>
-            <div class="ttd-card" style="background-image:url('${esc(D.privilege.cardImage || 'card/c01.png')}')"></div>
+            <div class="ttd-card" style="background-image:url('${esc(D.privilege.cardImage || 'card/c00.png')}')"></div>
           </div>
         </div>
         <div class="pb-demo-cap reveal d2">將卡片靠近手機上方並停留片刻，<br>手機就會自動開啟妳的專屬 App。</div>
@@ -292,31 +305,47 @@
     });
   }
 
-  /* ═══════════ 音效（可選，預設靜音，需使用者手勢）═══════════ */
-  let muted = true, actx = null;
-  function chime() {
+  /* ═══════════ 開場音效 welcome.wav（預設開啟；瀏覽器擋自動播放時，改於首次互動播放）═══════════ */
+  let muted = false;
+  let welcomeAudio = null;
+  let welcomeStarted = false;
+
+  function getWelcome() {
+    if (!welcomeAudio) {
+      welcomeAudio = new Audio('welcome.wav');
+      welcomeAudio.preload = 'auto';
+      welcomeAudio.volume = 0.7;
+      welcomeAudio.addEventListener('playing', () => { welcomeStarted = true; });
+    }
+    return welcomeAudio;
+  }
+  function playWelcome() {
     if (muted) return;
-    try {
-      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      const o = actx.createOscillator(), g = actx.createGain();
-      o.type = 'sine'; o.frequency.value = 660;
-      o.connect(g); g.connect(actx.destination);
-      const t = actx.currentTime;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.06, t + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-      o.start(t); o.stop(t + 0.5);
-    } catch (e) { /* 無音效環境不報錯 */ }
+    const p = getWelcome().play();
+    if (p && p.catch) p.catch(() => {});   // 被瀏覽器擋下不報錯，等手勢補播
+  }
+  // 首次互動（點任何地方 / 按鍵）補播一次，處理自動播放限制
+  function armWelcomeOnGesture() {
+    const evs = ['pointerdown', 'touchstart', 'click', 'keydown'];
+    const h = () => {
+      evs.forEach((ev) => document.removeEventListener(ev, h, true));
+      if (!welcomeStarted && !muted) playWelcome();
+    };
+    evs.forEach((ev) => document.addEventListener(ev, h, true));
   }
   function setupSound() {
     const btn = $('#pb-sound');
+    if (!btn || btn.dataset.ready) return;
+    btn.dataset.ready = '1';
     btn.classList.add('show');
-    btn.innerHTML = svg.soundOff;
+    btn.innerHTML = muted ? svg.soundOff : svg.soundOn;
+    btn.setAttribute('aria-label', muted ? '開啟音效' : '關閉音效');
     btn.addEventListener('click', () => {
       muted = !muted;
       btn.innerHTML = muted ? svg.soundOff : svg.soundOn;
       btn.setAttribute('aria-label', muted ? '開啟音效' : '關閉音效');
-      if (!muted) chime();
+      if (muted) { if (welcomeAudio) welcomeAudio.pause(); }
+      else { playWelcome(); }
     });
   }
 
@@ -366,7 +395,6 @@
     $('#pb-main').classList.add('show');
     setupReveals();
     setupSound();
-    chime();
     after(() => { overlay.style.display = 'none'; }, 750);
     // 焦點移到主內容，利於鍵盤/輔助工具
     const h = $('#pb-main h1'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
@@ -379,9 +407,25 @@
     guide.classList.add('show');
     if (actions) actions.style.display = 'none';
     if (navigator.vibrate) { try { navigator.vibrate([18, 40, 18]); } catch (e) {} }
-    chime();
     guide.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'center' });
   }
+
+  /* ═══════════ 翻卡（正 → 背 → 3 秒回正）═══════════ */
+  window.pbFlip = function (el) {
+    const hint = el.querySelector('.pb-flip-hint');
+    if (el.classList.contains('flipped')) {          // 已在背面 → 立刻翻回正面
+      el.classList.remove('flipped');
+      if (hint) hint.innerHTML = '<span class="pb-flip-dot"></span>點一下看背面';
+      if (el._flipTimer) { clearTimeout(el._flipTimer); el._flipTimer = null; }
+      return;
+    }
+    el.classList.add('flipped');
+    if (el._flipTimer) clearTimeout(el._flipTimer);
+    el._flipTimer = setTimeout(() => {
+      el.classList.remove('flipped');
+      el._flipTimer = null;
+    }, 3000);
+  };
 
   /* ═══════════ Lightbox ═══════════ */
   function setupLightbox() {
@@ -417,6 +461,11 @@
     else { fb.style.display = 'none'; }
 
     document.body.classList.add('pb-lock');
+
+    // 開場音效：一進頁面就播 welcome.wav（動畫進行中）；被瀏覽器擋下就等首次互動補播
+    setupSound();
+    playWelcome();
+    armWelcomeOnGesture();
 
     // 同一次瀏覽階段已看過 → 縮短，直接進帳戶啟用動畫
     if (sessionStorage.getItem('pb_seen')) { goIntro(); }

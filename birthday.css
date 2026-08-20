@@ -251,8 +251,11 @@ button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
 .pb-photo .ph-label { position: absolute; left: 14px; bottom: 12px; font-size: 10px; letter-spacing: 0.18em;
   color: var(--text-dim); text-transform: uppercase; }
 .pb-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center;
-  opacity: 0; transition: opacity 0.6s ease; }
+  opacity: 0; transition: opacity 0.6s ease; z-index: 1; }
 .pb-photo img.loaded { opacity: 1; }
+/* 真圖載入後，隱藏 placeholder 的 monogram 與標籤，讓照片乾淨呈現 */
+.pb-photo.has-img .ph-mono,
+.pb-photo.has-img .ph-label { display: none; }
 
 /* Gallery 橫向滑動 */
 .pb-gallery { display: flex; gap: 10px; margin-top: 14px; overflow-x: auto; scroll-snap-type: x mandatory;
@@ -284,8 +287,7 @@ button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
 .pb-nfc-card { position: relative; z-index: 2; width: 100%; aspect-ratio: 1.586; border-radius: var(--radius-lg);
   overflow: hidden; border: 1px solid rgba(255,255,255,0.08); background: #000 center/cover no-repeat;
   box-shadow: 0 26px 54px rgba(0,0,0,0.55); }
-.pb-nfc-card .ph-mono { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-family: var(--serif); font-size: 56px; color: rgba(213,161,139,0.2); font-weight: 700; }
+.pb-nfc-card .ph-mono { display: none; }   /* 卡面圖已含 logo，不需再疊 monogram */
 /* NFC 波紋 */
 .pb-ripple { position: absolute; z-index: 1; top: 50%; left: 50%; transform: translate(-50%,-50%); pointer-events: none; }
 .pb-ripple span { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -562,3 +564,56 @@ button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
 .pb-hint,
 .pb-final,
 .pb-account-card { display: none !important; }
+
+/* ═══════════ 微調：照片完整顯示、卡片 R 角變小 ═══════════ */
+
+/* 歷程單張照片：載入後依原始比例完整顯示，不裁切
+   （未載入時仍維持 4:3 佔位框；橫向 Gallery 保留等高裁切）*/
+.pb-node > .pb-photo.has-img { aspect-ratio: auto; height: auto; }
+.pb-node > .pb-photo.has-img img { position: static; width: 100%; height: auto; object-fit: contain; }
+
+/* NFC 信用卡示意圖：R 角改小，避免切到卡片圖 */
+.pb-nfc-card { border-radius: 2px; }
+.ttd-card { border-radius: 3px; }
+
+/* ═══════════ 翻卡（三十歲特別發行）═══════════ */
+.pb-flip {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1016 / 638;
+  margin: 22px 0 42px;
+  perspective: 1200px;
+  cursor: pointer;
+  animation: pbFlipFloat 5s ease-in-out infinite;
+  -webkit-tap-highlight-color: transparent;
+}
+@keyframes pbFlipFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.pb-flip-inner {
+  position: absolute; inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.75s cubic-bezier(0.4, 0.15, 0.2, 1);
+}
+.pb-flip.flipped .pb-flip-inner { transform: rotateY(180deg); }
+.pb-flip-face {
+  position: absolute; inset: 0;
+  -webkit-backface-visibility: hidden; backface-visibility: hidden;
+  border-radius: 20px; overflow: hidden;   /* 蓋掉卡圖四角的白邊 */
+  box-shadow: 0 22px 46px rgba(0,0,0,0.5);
+}
+.pb-flip-face img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pb-flip-back { transform: rotateY(180deg); }
+.pb-flip:focus-visible { outline: 2px solid var(--gold-light); outline-offset: 6px; border-radius: 4px; }
+.pb-flip-hint {
+  position: absolute; left: 50%; bottom: -28px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-size: 11px; letter-spacing: 0.14em; color: var(--gold-dim);
+}
+.pb-flip-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
+  box-shadow: 0 0 8px var(--glow-gold); animation: pbFlipDot 1.8s ease-in-out infinite; }
+@keyframes pbFlipDot { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-flip { animation: none; }
+  .pb-flip-inner { transition: none; }
+  .pb-flip-dot { animation: none; }
+}
