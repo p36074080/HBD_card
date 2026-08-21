@@ -447,9 +447,23 @@
     lb.addEventListener('click', (e) => { if (e.target === lb) close(); });
   }
 
+  /* ═══════════ 預先載入歷程照片（一進頁面就開始抓，避免捲到時才 delay）═══════════ */
+  const preloadedImgs = [];   // 保留參照，避免載入中被 GC
+  function preloadPhotos() {
+    const urls = [];
+    (D.milestones || []).forEach((m) => {
+      if (m.image) urls.push(m.image);
+      if (m.images) urls.push.apply(urls, m.images);
+      if (m.flip) { if (m.flip.front) urls.push(m.flip.front); if (m.flip.back) urls.push(m.flip.back); }
+    });
+    if (D.privilege && D.privilege.cardImage) urls.push(D.privilege.cardImage);
+    urls.forEach((u) => { const im = new Image(); im.decoding = 'async'; im.src = u; preloadedImgs.push(im); });
+  }
+
   /* ═══════════ Init ═══════════ */
   function init() {
     if (!D) { console.warn('PRIVATE_BANK data missing'); return; }
+    preloadPhotos();       // 最優先：立刻開始抓照片
     buildMain();
     setupLightbox();
 
